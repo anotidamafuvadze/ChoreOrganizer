@@ -6,7 +6,7 @@ function App() {
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>Term Project Frontend</h1>
+      <h1>Chore, I'll do it *^_^*</h1>
       <div>{msg}</div>
     </div>
   )
