@@ -12,6 +12,9 @@ TODO: Randomly generate user uuid
 - App
 TODO: Implement user login/sign up and authentication
 TODO: Implement onboarding completion and uploading to backend (ensure it matches shape of user const in onboarding flow)
+--User Database: id, name, bday, mascot, color, preferences, chores(type and frequency), houshold id, timestamp joined
+--Houshold Database: id, users, invite code
+
 TODO: Call chore organizin/leaderboard algorithm in backend upon onboarding completion and implement function that will call algorithm again each week
 
 
