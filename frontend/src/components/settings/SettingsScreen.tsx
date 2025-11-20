@@ -1,0 +1,482 @@
+import { useState } from "react";
+import {
+  User as UserIcon,
+  Users,
+  Bell,
+  Palette,
+  Type,
+  Copy,
+  Check,
+} from "lucide-react";
+import { User } from "../../App";
+import { MascotIllustration } from "../mascots/MascotIllustration";
+import { Button } from "../ui/button";
+import { Switch } from "../ui/switch";
+import { Input } from "../ui/input";
+
+interface SettingsScreenProps {
+  currentUser: User;
+  household: string;
+}
+
+// TODO: Replace with real roommates data fetching from backend
+const roommates = [
+  {
+    id: "1",
+    name: "You",
+    mascot: "cat" as const,
+    color: "#FFB6C1",
+    pronouns: "they/them",
+  },
+  {
+    id: "2",
+    name: "Alex",
+    mascot: "bunny" as const,
+    color: "#A7C7E7",
+    pronouns: "she/her",
+  },
+  {
+    id: "3",
+    name: "Jamie",
+    mascot: "fox" as const,
+    color: "#E6B8FF",
+    pronouns: "he/him",
+  },
+  {
+    id: "4",
+    name: "Sam",
+    mascot: "frog" as const,
+    color: "#FFDAB9",
+    pronouns: "they/them",
+  },
+];
+
+export function SettingsScreen({
+  currentUser,
+  household,
+}: SettingsScreenProps) {
+  // TODO: Replace with real notification settings fetching from backend and using notification API
+  const [notifications, setNotifications] = useState({
+    dailyReminders: true,
+    weeklySummary: true,
+    motivationalMessages: true,
+    roommateUpdates: false,
+  });
+  const [copied, setCopied] = useState(false);
+
+  const handleNotificationToggle = (
+    key: keyof typeof notifications,
+    value: boolean
+  ) => {};
+
+  // TODO: Implement change Mascot logic in backend
+  const changeMascot = (newMascot: string) => {
+    // Will need to show drop down of mascots to select from
+  };
+
+  // TODO: Implement change Name logic in backend
+  const changeName = (newName: string) => {};
+
+  // TODO: Implement change Pronouns logic in backend
+  const changePronouns = (newPronouns: string) => {};
+
+  // TODO: Implement change Mascot Color logic in backend
+  const changeMascotColors = (newColor: string) => {};
+
+  // TODO: Implement support contact functionality
+  const handleSupportClick = () => {};
+
+  // TODO: Replace with real invite code fetching from backend
+  const inviteCode = "XYZ123";
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(inviteCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // TODO: Implement accessibility changes to UI
+  const [accessibility, setAccessibility] = useState({
+    largerText: false,
+    highContrast: false,
+  });
+
+  const handleAccessibility = (
+    key: keyof typeof accessibility,
+    value: boolean
+  ) => {};
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h2 className="text-purple-700 mb-2">Settings & Profile</h2>
+        <p className="text-purple-500">
+          Manage your profile, household, and preferences ⚙️
+        </p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        {/* Profile Section */}
+        <div className="col-span-2 space-y-6">
+          <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-8 border border-purple-100/50 shadow-lg">
+            <div className="flex items-center gap-2 mb-6">
+              <UserIcon className="w-5 h-5 text-purple-500" />
+              <h3 className="text-purple-700">Your Profile</h3>
+            </div>
+
+            <div className="flex items-start gap-8">
+              <div className="text-center">
+                <div className="bg-gradient-to-br from-purple-100 to-pink-100 p-8 rounded-3xl shadow-lg mb-4">
+                  <MascotIllustration
+                    mascot={currentUser.mascot}
+                    color={currentUser.color}
+                    size={120}
+                    showSparkle
+                  />
+                </div>
+                <Button
+                  onClick={() => changeMascot(currentUser.mascot)}
+                  className="bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-2xl text-sm"
+                >
+                  Change Mascot
+                </Button>
+              </div>
+
+              <div className="flex-1 space-y-4">
+                <div>
+                  <label className="text-purple-600 text-sm mb-2 block">
+                    Name
+                  </label>
+                  <Input
+                    defaultValue="You"
+                    onBlur={(e: any) => changeName(e.target?.value)}
+                    className="bg-white/80 border-purple-200 rounded-2xl"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-purple-600 text-sm mb-2 block">
+                    Pronouns
+                  </label>
+                  <Input
+                    defaultValue="they/them"
+                    onBlur={(e: any) => changePronouns(e.target?.value)}
+                    className="bg-white/80 border-purple-200 rounded-2xl"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-purple-600 text-sm mb-2 block">
+                    Mascot Color
+                  </label>
+                  <div className="flex gap-2">
+                    {[
+                      "#FFB6C1",
+                      "#B4E7CE",
+                      "#A7C7E7",
+                      "#E6B8FF",
+                      "#FFE4B5",
+                      "#FFDAB9",
+                    ].map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => changeMascotColors(color)}
+                        className={`w-10 h-10 rounded-full border-4 transition-all ${
+                          currentUser.color === color
+                            ? "border-purple-500 shadow-lg scale-110"
+                            : "border-white hover:border-purple-300"
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Notification Settings */}
+          {/* TODO: Make buttons that change notifcaiton */}
+          <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-8 border border-purple-100/50 shadow-lg">
+            <div className="flex items-center gap-2 mb-6">
+              <Bell className="w-5 h-5 text-purple-500" />
+              <h3 className="text-purple-700">Notifications</h3>
+            </div>
+
+            <div className="space-y-4">
+              {/* Daily Reminders */}
+              <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-purple-100">
+                <div>
+                  <p className="text-purple-700">Daily Reminders</p>
+                  <p className="text-purple-500 text-sm">
+                    Get notified about today's chores
+                  </p>
+                </div>
+                <Button
+                  aria-pressed={notifications.dailyReminders}
+                  onClick={() => {
+                    const next = !notifications.dailyReminders;
+                    setNotifications({
+                      ...notifications,
+                      dailyReminders: next,
+                    });
+                    handleNotificationToggle("dailyReminders", next);
+                  }}
+                  className={`px-3 py-1 rounded-full text-sm transition ${
+                    notifications.dailyReminders
+                      ? "bg-purple-500 text-white"
+                      : "bg-white/60 text-purple-700 border border-purple-100"
+                  }`}
+                >
+                  {notifications.dailyReminders ? (
+                    <Check className="w-4 h-4 inline mr-1" />
+                  ) : null}
+                  {notifications.dailyReminders ? "On" : "Off"}
+                </Button>
+              </div>
+
+              {/* Weekly Summary */}
+              <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-purple-100">
+                <div>
+                  <p className="text-purple-700">Weekly Summary</p>
+                  <p className="text-purple-500 text-sm">
+                    Receive a recap every Sunday
+                  </p>
+                </div>
+                <Button
+                  aria-pressed={notifications.weeklySummary}
+                  onClick={() => {
+                    const next = !notifications.weeklySummary;
+                    setNotifications({ ...notifications, weeklySummary: next });
+                    handleNotificationToggle("weeklySummary", next);
+                  }}
+                  className={`px-3 py-1 rounded-full text-sm transition ${
+                    notifications.weeklySummary
+                      ? "bg-purple-500 text-white"
+                      : "bg-white/60 text-purple-700 border border-purple-100"
+                  }`}
+                >
+                  {notifications.weeklySummary ? (
+                    <Check className="w-4 h-4 inline mr-1" />
+                  ) : null}
+                  {notifications.weeklySummary ? "On" : "Off"}
+                </Button>
+              </div>
+
+              {/* Motivational Messages */}
+              <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-purple-100">
+                <div>
+                  <p className="text-purple-700">Motivational Messages</p>
+                  <p className="text-purple-500 text-sm">
+                    Encouraging notes to keep you going!
+                  </p>
+                </div>
+                <Button
+                  aria-pressed={notifications.motivationalMessages}
+                  onClick={() => {
+                    const next = !notifications.motivationalMessages;
+                    setNotifications({
+                      ...notifications,
+                      motivationalMessages: next,
+                    });
+                    handleNotificationToggle("motivationalMessages", next);
+                  }}
+                  className={`px-3 py-1 rounded-full text-sm transition ${
+                    notifications.motivationalMessages
+                      ? "bg-purple-500 text-white"
+                      : "bg-white/60 text-purple-700 border border-purple-100"
+                  }`}
+                >
+                  {notifications.motivationalMessages ? (
+                    <Check className="w-4 h-4 inline mr-1" />
+                  ) : null}
+                  {notifications.motivationalMessages ? "On" : "Off"}
+                </Button>
+              </div>
+
+              {/* Roommate Updates */}
+              <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-purple-100">
+                <div>
+                  <p className="text-purple-700">Roommate Updates</p>
+                  <p className="text-purple-500 text-sm">
+                    Know when others complete chores
+                  </p>
+                </div>
+                <Button
+                  aria-pressed={notifications.roommateUpdates}
+                  onClick={() => {
+                    const next = !notifications.roommateUpdates;
+                    setNotifications({
+                      ...notifications,
+                      roommateUpdates: next,
+                    });
+                    handleNotificationToggle("roommateUpdates", next);
+                  }}
+                  className={`px-3 py-1 rounded-full text-sm transition ${
+                    notifications.roommateUpdates
+                      ? "bg-purple-500 text-white"
+                      : "bg-white/60 text-purple-700 border border-purple-100"
+                  }`}
+                >
+                  {notifications.roommateUpdates ? (
+                    <Check className="w-4 h-4 inline mr-1" />
+                  ) : null}
+                  {notifications.roommateUpdates ? "On" : "Off"}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Accessibility */}
+          <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-8 border border-purple-100/50 shadow-lg">
+            <div className="flex items-center gap-2 mb-6">
+              <Palette className="w-5 h-5 text-purple-500" />
+              <h3 className="text-purple-700">Accessibility</h3>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-purple-100">
+                <div className="flex items-center gap-3">
+                  <Type className="w-5 h-5 text-purple-500" />
+                  <div>
+                    <p className="text-purple-700">Larger Text</p>
+                    <p className="text-purple-500 text-sm">
+                      Increase readability
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  aria-pressed={accessibility.largerText}
+                  onClick={() => {
+                    const next = !accessibility.largerText;
+                    setAccessibility({ ...accessibility, largerText: next });
+                    handleAccessibility("largerText", next);
+                  }}
+                  className={`px-3 py-1 rounded-full text-sm transition ${
+                    accessibility.largerText
+                      ? "bg-purple-500 text-white"
+                      : "bg-white/60 text-purple-700 border border-purple-100"
+                  }`}
+                >
+                  {accessibility.largerText ? (
+                    <Check className="w-4 h-4 inline mr-1" />
+                  ) : null}
+                  {accessibility.largerText ? "On" : "Off"}
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-white/60 rounded-xl border border-purple-100">
+                <div className="flex items-center gap-3">
+                  <Palette className="w-5 h-5 text-purple-500" />
+                  <div>
+                    <p className="text-purple-700">High Contrast Mode</p>
+                    <p className="text-purple-500 text-sm">Better visibility</p>
+                  </div>
+                </div>
+                <Button
+                  aria-pressed={accessibility.highContrast}
+                  onClick={() => {
+                    const next = !accessibility.highContrast;
+                    setAccessibility({ ...accessibility, highContrast: next });
+                    handleAccessibility("highContrast", next);
+                  }}
+                  className={`px-3 py-1 rounded-full text-sm transition ${
+                    accessibility.highContrast
+                      ? "bg-purple-500 text-white"
+                      : "bg-white/60 text-purple-700 border border-purple-100"
+                  }`}
+                >
+                  {accessibility.highContrast ? (
+                    <Check className="w-4 h-4 inline mr-1" />
+                  ) : null}
+                  {accessibility.highContrast ? "On" : "Off"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Household Section */}
+        <div className="space-y-6">
+          <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-6 border border-purple-100/50 shadow-lg">
+            <div className="flex items-center gap-2 mb-6">
+              <Users className="w-5 h-5 text-purple-500" />
+              <h3 className="text-purple-700">Household</h3>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl p-4 border border-purple-200">
+                <p className="text-purple-600 text-sm mb-1">Household Name</p>
+                <p className="text-purple-700 text-lg">{household}</p>
+              </div>
+
+              <div>
+                <p className="text-purple-600 text-sm mb-3">Roommates</p>
+                <div className="space-y-2">
+                  {roommates.map((roommate) => (
+                    <div
+                      key={roommate.id}
+                      className="bg-white/60 rounded-xl p-3 border border-purple-100 flex items-center gap-3"
+                    >
+                      <MascotIllustration
+                        mascot={roommate.mascot}
+                        color={roommate.color}
+                        size={35}
+                      />
+                      <div>
+                        <p className="text-purple-700 text-sm">
+                          {roommate.name}
+                        </p>
+                        <p className="text-purple-500 text-xs">
+                          {roommate.pronouns}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-purple-100">
+                <p className="text-purple-600 text-sm mb-2">Invite Code</p>
+                <div className="flex gap-2">
+                  <Input
+                    value={inviteCode}
+                    readOnly
+                    className="bg-purple-50 border-purple-200 rounded-xl text-center tracking-widest"
+                  />
+                  <Button
+                    onClick={handleCopyCode}
+                    className="bg-gradient-to-r from-purple-400 to-pink-400 hover:from-purple-500 hover:to-pink-500 text-white rounded-xl px-4"
+                  >
+                    {copied ? (
+                      <Check className="w-4 h-4" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-purple-400 text-xs mt-2">
+                  Share this code with new roommates!
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl p-6 border border-blue-200">
+            <p className="text-purple-700 mb-2">💜 Need Help?</p>
+            <p className="text-purple-600 text-sm mb-4">
+              We're here to make your chore life easier!
+            </p>
+            <Button
+              className="w-full bg-white hover:bg-purple-50 text-purple-600 rounded-xl"
+              onClick={handleSupportClick}
+            >
+              Contact Support
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

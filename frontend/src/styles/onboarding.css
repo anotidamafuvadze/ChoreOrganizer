@@ -1,0 +1,38 @@
+:root {
+  /* Chore gradient color stops (approximate Tailwind-like tones) */
+  --trash-from: #b6d5c1;
+  --trash-to:   #d1e4d8;
+
+  --dishes-from: #d9e9fd;
+  --dishes-to:   #cbdcee;
+
+  --sweep-from: #fffbdc;
+  --sweep-to:   #f0dc8b;
+
+  --kitchen-from: #ffe0f2;
+  --kitchen-to:   #e2b5ba;
+
+  --groceries-from: #f2e5ff;
+  --groceries-to:   #dfc5ee;
+
+  --bathroom-from: #e5fdff;
+  --bathroom-to:   #c4e1db;
+
+  --laundry-from: #e0e7ff;
+  --laundry-to:   #bfc5e0;
+
+  --plants-from: #f5ffe2;
+  --plants-to:   #d4e4b7;
+
+  /* Prebuilt linear-gradient variables for easy use in JS (background-image: var(--xxx-gradient)) */
+  --trash-gradient: linear-gradient(to bottom right, var(--trash-from), var(--trash-to));
+  --dishes-gradient: linear-gradient(to bottom right, var(--dishes-from), var(--dishes-to));
+  --sweep-gradient: linear-gradient(to bottom right, var(--sweep-from), var(--sweep-to));
+  --kitchen-gradient: linear-gradient(to bottom right, var(--kitchen-from), var(--kitchen-to));
+  --groceries-gradient: linear-gradient(to bottom right, var(--groceries-from), var(--groceries-to));
+  --bathroom-gradient: linear-gradient(to bottom right, var(--bathroom-from), var(--bathroom-to));
+  --laundry-gradient: linear-gradient(to bottom right, var(--laundry-from), var(--laundry-to));
+  --plants-gradient: linear-gradient(to bottom right, var(--plants-from), var(--plants-to));
+}
+
+/* ...you can add component-specific rules below if needed... */
