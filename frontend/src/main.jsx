@@ -1,11 +1,12 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
 // import './index.css'
-import './styles/globals.css'
-import App from './App.jsx'
+import "./styles/globals.css";
+// Import the TSX app module. Vite resolves extensions, so import './App' works for App.tsx
+import App from "./App";
 
-createRoot(document.getElementById('root')).render(
+createRoot(document.getElementById("root")).render(
   <StrictMode>
     <App />
-  </StrictMode>,
-)
+  </StrictMode>
+);

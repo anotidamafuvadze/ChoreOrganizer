@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react';
+import { Sparkles, LogOut } from "lucide-react";
 
 interface HeaderProps {
   household: string;
@@ -29,9 +29,33 @@ export function Header({ household }: HeaderProps) {
             <p className="text-purple-400 text-sm">{household}</p>
           </div>
         </div>
-        
-        <div className="bg-gradient-to-r from-blue-100 to-purple-100 px-6 py-2 rounded-full shadow-sm">
-          <p className="text-purple-600 text-sm">{getCurrentWeek()}</p>
+
+        <div className="flex items-center gap-4">
+          <div className="bg-gradient-to-r from-blue-100 to-purple-100 px-6 py-2 rounded-full shadow-sm">
+            <p className="text-purple-600 text-sm">{getCurrentWeek()}</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const mod = await import("../firebaseClient");
+                if (mod && typeof mod.signOut === "function") {
+                  await mod.signOut();
+                  return;
+                }
+              } catch (e) {
+                // ignore - we'll fallback to reload
+              }
+              // Fallback: reload to reset app state when firebase isn't configured
+              window.location.reload();
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 border border-purple-100 text-purple-600 hover:bg-white"
+            title="Log out"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="text-sm">Log out</span>
+          </button>
         </div>
       </div>
     </header>

@@ -17,6 +17,7 @@ import { Input } from "../ui/input";
 interface SettingsScreenProps {
   currentUser: User;
   household: string;
+  onUpdateUser?: (user: User) => void;
 }
 
 // TODO: Replace with real roommates data fetching from backend
@@ -54,6 +55,7 @@ const roommates = [
 export function SettingsScreen({
   currentUser,
   household,
+  onUpdateUser,
 }: SettingsScreenProps) {
   // TODO: Replace with real notification settings fetching from backend and using notification API
   const [notifications, setNotifications] = useState({
@@ -75,7 +77,17 @@ export function SettingsScreen({
   };
 
   // TODO: Implement change Name logic in backend
-  const changeName = (newName: string) => {};
+  const changeName = (newName: string) => {
+    if (!newName || newName.trim() === "") return;
+    const updated: User = { ...currentUser, name: newName };
+    try {
+      if (typeof onUpdateUser === "function") {
+        onUpdateUser(updated);
+      }
+    } catch (e) {
+      console.warn("Failed to propagate profile change", e);
+    }
+  };
 
   // TODO: Implement change Pronouns logic in backend
   const changePronouns = (newPronouns: string) => {};
@@ -149,7 +161,7 @@ export function SettingsScreen({
                     Name
                   </label>
                   <Input
-                    defaultValue="You"
+                    defaultValue={currentUser.name}
                     onBlur={(e: any) => changeName(e.target?.value)}
                     className="bg-white/80 border-purple-200 rounded-2xl"
                   />
