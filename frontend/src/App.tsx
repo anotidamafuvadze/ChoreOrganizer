@@ -126,9 +126,9 @@ export default function App() {
                 name:
                   fbUser.displayName ||
                   (fbUser.email ? fbUser.email.split("@")[0] : "You"),
-                mascot: "cat",
-                color: "#FFB6C1",
-                preferences: {},
+                mascot: "cat", // TODO: Retrieve from data base (Anotida)
+                color: "#FFB6C1", // TODO: Retrieve from data base (Anotida)
+                preferences: {}, // TODO: Retrieve from data base (Anotida)
               };
               setCurrentUser(mapped);
               // Do not auto-navigate here. Keep the login screen visible until the
