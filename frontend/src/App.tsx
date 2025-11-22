@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEffect } from "react";
 import { Home, ListTodo, Calendar, Trophy, Settings } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Header } from "./components/Header";
@@ -52,14 +53,124 @@ export default function App() {
   const [household, setHousehold] = useState<string>("Unit 3B Roomies");
 
   // TODO: Replace mock logic with real authentication
-  const handleLoginComplete = () => {
-    setScreen("onboarding");
+  const handleLoginComplete = (forceOnboarding?: boolean) => {
+    if (forceOnboarding) {
+      setScreen("onboarding");
+      return;
+    }
+    // When the user explicitly continues from the login screen, determine
+    // whether to show onboarding or go to the app. Prefer a backend check
+    // (using the Firebase ID token), and fall back to a localStorage per-UID
+    // flag when backend is unreachable.
+    (async () => {
+      try {
+        const mod = await import("./firebaseClient");
+        const fbAuth = mod && mod.auth ? mod.auth : null;
+        const fbUser = fbAuth && fbAuth.currentUser ? fbAuth.currentUser : null;
+
+        if (fbUser) {
+          try {
+            const token = await fbUser.getIdToken();
+            const res = await fetch("/api/user/me", {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              const hasOnboarded =
+                !!(
+                  data &&
+                  data.preferences &&
+                  Object.keys(data.preferences).length > 0
+                ) || !!data.onboardComplete;
+              setScreen(hasOnboarded ? "app" : "onboarding");
+              return;
+            }
+            if (res.status === 404) {
+              setScreen("onboarding");
+              return;
+            }
+          } catch (e) {
+            // backend check failed; fall back to local flag
+          }
+
+          try {
+            const key = `onboarded:${fbUser.uid}`;
+            const onboarded = localStorage.getItem(key) === "1";
+            setScreen(onboarded ? "app" : "onboarding");
+            return;
+          } catch (e) {
+            // ignore localStorage errors
+          }
+        }
+      } catch (e) {
+        // firebase client not available, default to onboarding
+      }
+
+      setScreen("onboarding");
+    })();
   };
 
+  // Listen for Firebase auth changes (if Firebase is configured) and map to our app User
+  useEffect(() => {
+    let unsub;
+    const mod = import("./firebaseClient")
+      .then((mod) => {
+        if (mod && typeof mod.onAuthChange === "function") {
+          unsub = mod.onAuthChange((fbUser) => {
+            if (fbUser) {
+              const mapped: User = {
+                id: fbUser.uid,
+                name:
+                  fbUser.displayName ||
+                  (fbUser.email ? fbUser.email.split("@")[0] : "You"),
+                mascot: "cat",
+                color: "#FFB6C1",
+                preferences: {},
+              };
+              setCurrentUser(mapped);
+              // Do not auto-navigate here. Keep the login screen visible until the
+              // user explicitly continues (handled by `handleLoginComplete`).
+            } else {
+              setCurrentUser(null);
+              setScreen("login");
+            }
+          });
+        }
+      })
+      .catch((e) => {
+        // If import fails (no firebase configured), do nothing.
+        // Keep the app usable with mock onboarding flow.
+        // console.warn('Firebase auth not available', e)
+      });
+
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, []);
   // TODO: Replace mock logic with real onboarding completion in backend
   const handleOnboardingComplete = (user: User, householdName: string) => {
-    setCurrentUser(user); // TODO: Update in backend/auth context as well
+    // Preserve Firebase-authenticated name/id when present so Google displayName isn't overwritten
+    const merged: User = { ...user };
+    if (currentUser) {
+      if (currentUser.id) merged.id = currentUser.id;
+      if (currentUser.name && currentUser.name !== "You")
+        merged.name = currentUser.name;
+      if (!merged.mascot && currentUser.mascot)
+        merged.mascot = currentUser.mascot;
+      if (!merged.color && currentUser.color) merged.color = currentUser.color;
+    }
+
+    setCurrentUser(merged); // TODO: Update in backend/auth context as well
     setHousehold(householdName); // TODO: Update in backend/auth context as well
+    // Mark this uid as onboarded locally; backend persistence can be added later
+    try {
+      localStorage.setItem(`onboarded:${merged.id}`, "1");
+    } catch (e) {
+      // ignore
+    }
     setScreen("app");
   };
 
@@ -80,7 +191,12 @@ export default function App() {
   ];
 
   if (screen === "login") {
-    return <LoginScreen onLoginComplete={handleLoginComplete} />;
+    return (
+      <LoginScreen
+        onLoginComplete={handleLoginComplete}
+        currentUser={currentUser}
+      />
+    );
   }
 
   if (screen === "onboarding") {
@@ -108,6 +224,7 @@ export default function App() {
               <SettingsScreen
                 currentUser={currentUser!}
                 household={household}
+                onUpdateUser={(u) => setCurrentUser(u)}
               />
             )}
           </motion.div>
