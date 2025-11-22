@@ -1,9 +1,0 @@
-{
-  "name": "term-project-anotida-noor-laurianie-madison",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "test": "jest"
-  }
-  // ...existing fields (dependencies, etc.)...
-}

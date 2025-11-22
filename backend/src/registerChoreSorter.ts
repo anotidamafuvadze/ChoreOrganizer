@@ -2,9 +2,6 @@ import express, { Request, Response } from "express";
 const app = express();
 app.use(express.json());
 
-/* -------------------------------------------------------------------------- */
-/*                          YOUR ORIGINAL TYPES (UNCHANGED)                   */
-/* -------------------------------------------------------------------------- */
 
 type Household = { id: number, name: string, users: User[], chores: Chore[] }
 type Chore = { id: number, name: string }
@@ -51,9 +48,6 @@ export interface MCMFResult {
     assignments: { userClone: string; choreNode: string }[];
 }
 
-/* -------------------------------------------------------------------------- */
-/*                            YOUR ORIGINAL FUNCTIONS                          */
-/* -------------------------------------------------------------------------- */
 
 function getChoreAssignmentCost(
     user: User,
