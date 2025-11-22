@@ -115,11 +115,11 @@ export default function App() {
 
   // Listen for Firebase auth changes (if Firebase is configured) and map to our app User
   useEffect(() => {
-    let unsub;
+    let unsub: () => void;
     const mod = import("./firebaseClient")
       .then((mod) => {
         if (mod && typeof mod.onAuthChange === "function") {
-          unsub = mod.onAuthChange((fbUser) => {
+          unsub = mod.onAuthChange((fbUser: { uid: any; displayName: any; email: string; }) => {
             if (fbUser) {
               const mapped: User = {
                 id: fbUser.uid,
@@ -131,6 +131,7 @@ export default function App() {
                 preferences: {}, // TODO: Retrieve from data base (Anotida)
               };
               setCurrentUser(mapped);
+              setScreen("app");
               // Do not auto-navigate here. Keep the login screen visible until the
               // user explicitly continues (handled by `handleLoginComplete`).
             } else {
