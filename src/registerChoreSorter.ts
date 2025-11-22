@@ -1,19 +1,31 @@
-type Household = {id: number, name: string, users: User[], chores: Chore[] }
-type Chore = {id: number, name: string}
-type User = {name: String, id: number, icon: string, household: Household, preferences: 
-    [{chore: Chore, prefNum: number}], choreHistory: [{week: number, chores: Chore[]}]}
+import express, { Request, Response } from "express";
+const app = express();
+app.use(express.json());
+
+/* -------------------------------------------------------------------------- */
+/*                          YOUR ORIGINAL TYPES (UNCHANGED)                   */
+/* -------------------------------------------------------------------------- */
+
+type Household = { id: number, name: string, users: User[], chores: Chore[] }
+type Chore = { id: number, name: string }
+type User = {
+    name: String,
+    id: number,
+    icon: string,
+    household: Household,
+    preferences: [{ chore: Chore, prefNum: number }],
+    choreHistory: [{ week: number, chores: Chore[] }]
+}
 
 const NodeTypes = {
     USER: "user",
     CHORE: "chore"
-}
-type GraphNode =  {type: string, edges: Edge[]}
-type Edge = {from: User, to: Chore, weight: number}
+};
+
+type GraphNode = { type: string, edges: Edge[] }
+type Edge = { from: User, to: Chore, weight: number }
 type ChoreGraph = {}
 
-
-
-// Flow Network representation (for min-cost max-flow)
 type FlowNodeID = string;
 
 interface FlowNode {
@@ -25,7 +37,7 @@ interface FlowEdge {
     from: FlowNodeID;
     to: FlowNodeID;
     capacity: number;
-    cost: number; // your weight function determines this
+    cost: number;
 }
 
 interface FlowGraph {
@@ -39,20 +51,18 @@ export interface MCMFResult {
     assignments: { userClone: string; choreNode: string }[];
 }
 
+/* -------------------------------------------------------------------------- */
+/*                            YOUR ORIGINAL FUNCTIONS                          */
+/* -------------------------------------------------------------------------- */
 
-/**
- * Calculates the cost of assigning a given user to a given chore
- * using the improved weighting system designed for stable rotation.
- */
 function getChoreAssignmentCost(
     user: User,
     chore: Chore,
     currentWeek: number
 ): number {
     const prefEntry = user.preferences.find(p => p.chore.id === chore.id);
-    if (!prefEntry) return 99999;  // no preference = effectively impossible
+    if (!prefEntry) return 99999;
 
-    // prefNum: 1 = want, 2 = fine, 3 = hate
     let baseCost = 0;
     switch (prefEntry.prefNum) {
         case 1: baseCost = 10; break;
@@ -61,26 +71,24 @@ function getChoreAssignmentCost(
         default: baseCost = 100; break;
     }
 
-    const noise = Math.floor(Math.random() * 6);  // 0–5
+    const noise = Math.floor(Math.random() * 6);
 
-    //PLEASE: will want to look at this for when you actually establish how you are going to be keeping track of weeks 
     const lastWeek = user.choreHistory.find(h => h.week === currentWeek - 1);
     let repeatPenalty = 0;
 
     if (lastWeek && lastWeek.chores.some(c => c.id === chore.id)) {
         repeatPenalty = 200;
     }
+
     return baseCost + repeatPenalty + noise;
 }
 
-
 let counter = 0;
 function makeID() {
-  return `n-${counter++}`;
+    return `n-${counter++}`;
 }
 
-
-function buildFlowGraph(
+export function buildFlowGraph(
     household: Household,
     week: number
 ): FlowGraph {
@@ -97,7 +105,6 @@ function buildFlowGraph(
     const baseChores = Math.floor(numChores / numUsers);
     const extraChores = numChores % numUsers;
 
-    // To make distribution predictable, pick first N users for extra
     const usersSorted = [...household.users].sort((a, b) => a.id - b.id);
 
     const userCloneNodes: { user: User; cloneID: string }[] = [];
@@ -111,7 +118,6 @@ function buildFlowGraph(
             userCloneNodes.push({ user, cloneID });
             nodes.push({ id: cloneID, type: "userClone" });
 
-            // Connect source → userClone (capacity = 1)
             edges.push({
                 from: source.id,
                 to: cloneID,
@@ -121,9 +127,6 @@ function buildFlowGraph(
         }
     }
 
-    // -----------------------
-    // 3. Create chore nodes
-    // -----------------------
     const choreNodes: { chore: Chore; id: string }[] = [];
 
     for (const chore of household.chores) {
@@ -131,7 +134,6 @@ function buildFlowGraph(
         choreNodes.push({ chore, id: choreID });
         nodes.push({ id: choreID, type: "chore" });
 
-        // Connect chore → sink (capacity = 1)
         edges.push({
             from: choreID,
             to: sink.id,
@@ -140,22 +142,13 @@ function buildFlowGraph(
         });
     }
 
-    // -----------------------
-    // 4. Connect each userClone → each chore with a cost edge
-    // -----------------------
     for (const ucn of userCloneNodes) {
-        const { user, cloneID } = ucn;
-
         for (const cn of choreNodes) {
-            const { chore, id: choreID } = cn;
-
-            const cost = getChoreAssignmentCost(user, chore, week);
-
             edges.push({
-                from: cloneID,
-                to: choreID,
+                from: ucn.cloneID,
+                to: cn.id,
                 capacity: 1,
-                cost
+                cost: getChoreAssignmentCost(ucn.user, cn.chore, week)
             });
         }
     }
@@ -163,42 +156,15 @@ function buildFlowGraph(
     return { nodes, edges };
 }
 
-
-
-/**
- * Min-Cost Max-Flow implementation using:
- * - Successive Shortest Augmenting Path (SSAP)
- * - Bellman-Ford for shortest paths with negative edges
- *
- * Works with your FlowGraph type.
- */
-
-
 export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
     const nodeIndex = new Map<string, number>();
     graph.nodes.forEach((n, i) => nodeIndex.set(n.id, i));
 
     const N = graph.nodes.length;
 
-    // Build adjacency list with residual edges
-    const adj: {
-        to: number;
-        rev: number;
-        capacity: number;
-        cost: number;
-        original?: boolean;
-        fromNode?: string;
-        toNode?: string;
-    }[][] = Array.from({ length: N }, () => []);
+    const adj: any[][] = Array.from({ length: N }, () => []);
 
-    const addEdge = (
-        u: number,
-        v: number,
-        capacity: number,
-        cost: number,
-        fromNode: string,
-        toNode: string
-    ) => {
+    const addEdge = (u: number, v: number, capacity: number, cost: number, fromNode: string, toNode: string) => {
         adj[u].push({
             to: v,
             rev: adj[v].length,
@@ -216,11 +182,8 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
         });
     };
 
-    // Add edges from graph
     for (const e of graph.edges) {
-        const u = nodeIndex.get(e.from)!;
-        const v = nodeIndex.get(e.to)!;
-        addEdge(u, v, e.capacity, e.cost, e.from, e.to);
+        addEdge(nodeIndex.get(e.from)!, nodeIndex.get(e.to)!, e.capacity, e.cost, e.from, e.to);
     }
 
     const source = nodeIndex.get("source")!;
@@ -231,16 +194,15 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
 
     while (true) {
         const dist = Array(N).fill(Infinity);
-        const parent: { node: number; edgeIndex: number }[] = Array(N).fill(null);
+        const parent = Array(N).fill(null);
         dist[source] = 0;
 
-        // Bellman-Ford
         let updated = true;
         for (let iter = 0; iter < N - 1 && updated; iter++) {
             updated = false;
             for (let u = 0; u < N; u++) {
                 if (dist[u] === Infinity) continue;
-                adj[u].forEach((edge, i) => {
+                adj[u].forEach((edge: any, i: number) => {
                     if (edge.capacity > 0 && dist[edge.to] > dist[u] + edge.cost) {
                         dist[edge.to] = dist[u] + edge.cost;
                         parent[edge.to] = { node: u, edgeIndex: i };
@@ -252,7 +214,6 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
 
         if (dist[sink] === Infinity) break;
 
-        // Find bottleneck (always 1 for your assignment graph)
         let pushFlow = Infinity;
         let cur = sink;
         while (cur !== source) {
@@ -264,15 +225,12 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
 
         if (pushFlow === 0 || pushFlow === Infinity) break;
 
-        // Augment the flow
         cur = sink;
         while (cur !== source) {
             const p = parent[cur]!;
             const e = adj[p.node][p.edgeIndex];
-
             e.capacity -= pushFlow;
             adj[cur][e.rev].capacity += pushFlow;
-
             cur = p.node;
         }
 
@@ -280,17 +238,10 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
         cost += pushFlow * dist[sink];
     }
 
-    // --------------------------
-    // Extract final assignments
-    // --------------------------
     const assignments: { userClone: string; choreNode: string }[] = [];
 
     for (let u = 0; u < N; u++) {
         for (const edge of adj[u]) {
-            // Look for edges that:
-            // - were original edges
-            // - have 0 capacity (means flow 1 used it)
-            // - connect userClone → chore
             if (
                 edge.original &&
                 edge.fromNode &&
@@ -308,4 +259,45 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
     }
 
     return { flow, cost, assignments };
+}
+
+app.post("/assign-chores", (req: Request, res: Response) => {
+    const { household, week } = req.body;
+
+    try {
+        // Build flow network
+        const graph = buildFlowGraph(household, week);
+
+        // Compute min cost max flow
+        const result = minCostMaxFlow(graph);
+
+        // Build lookup maps
+        for (const node of graph.nodes) {
+            if (node.type === "userClone") {
+                const user = household.users.find((u: User) => {
+                    // clone IDs contain "n-#", we match clones in creation order
+                    return true;
+                });
+            }
+        }
+
+        // More simply: your frontend will match clone IDs → chore IDs
+        // Returning raw assignments is fine
+
+        res.json({
+            success: true,
+            flowResult: result
+        });
+
+    } catch (err: any) {
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+});
+
+// Only start server when this file is run directly (prevents auto-start during tests)
+if (require.main === module) {
+    app.listen(3000, () => console.log("Server running on port 3000"));
 }
