@@ -13,16 +13,6 @@ type User = {
     preferences: [{ chore: Chore, prefNum: number }],
     choreHistory: [{ week: number, chores: Chore[] }]
 }
-
-const NodeTypes = {
-    USER: "user",
-    CHORE: "chore"
-};
-
-type GraphNode = { type: string, edges: Edge[] }
-type Edge = { from: User, to: Chore, weight: number }
-type ChoreGraph = {}
-
 type FlowNodeID = string;
 
 interface FlowNode {
