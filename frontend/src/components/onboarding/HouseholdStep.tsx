@@ -1,22 +1,71 @@
-import { useState } from 'react';
-import { Home, Users, ArrowRight } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
+import { useState } from "react";
+import { Home, Users, ArrowRight } from "lucide-react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 interface HouseholdStepProps {
   onNext: (householdName: string) => void;
 }
 
 export function HouseholdStep({ onNext }: HouseholdStepProps) {
-  const [mode, setMode] = useState<'create' | 'join' | null>(null);
-  const [householdName, setHouseholdName] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
+  const [mode, setMode] = useState<"create" | "join" | null>(null);
+  const [householdName, setHouseholdName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
 
-  const handleContinue = () => {
-    if (mode === 'create' && householdName) {
+  const handleContinue = async () => {
+    if (mode === "create" && householdName) {
       onNext(householdName);
-    } else if (mode === 'join' && inviteCode) {
-      onNext('Unit 3B Roomies'); // Mock joined household
+    } else if (mode === "join" && inviteCode) {
+      try {
+        // try to include firebase user id if available so backend can add the user to the household
+        let userId: string | null = null;
+        try {
+          const mod = await import("../../firebaseClient").catch(
+            () => null
+          );
+          const fbAuth = mod && mod.auth ? mod.auth : null;
+          const fbUser =
+            fbAuth && fbAuth.currentUser ? fbAuth.currentUser : null;
+          if (fbUser && fbUser.uid) userId = fbUser.uid;
+        } catch (e) {
+          // ignore; proceed without userId
+        }
+
+        const res = await fetch("/api/user/join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ inviteCode: inviteCode.trim(), userId }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(
+            err && err.error
+              ? `Failed to join household: ${err.error}`
+              : "Failed to join household"
+          );
+          return;
+        }
+
+        const data = await res.json();
+        const hh = data && data.household ? data.household : null;
+        if (!hh) {
+          alert("Household not found");
+          return;
+        }
+
+        // store household info (including chores) so subsequent onboarding steps can display chores
+        try {
+          sessionStorage.setItem("joinedHousehold", JSON.stringify(hh));
+        } catch (e) {
+          // ignore storage errors
+        }
+
+        onNext(hh.name || "Joined Household");
+      } catch (err) {
+        console.error("Error joining household:", err);
+        alert("Error joining household");
+      }
     }
   };
 
@@ -26,9 +75,7 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
         <div className="inline-flex items-center justify-center bg-gradient-to-br from-blue-200 to-purple-200 p-4 rounded-3xl shadow-lg mb-4">
           <Home className="w-12 h-12 text-purple-600" />
         </div>
-        <h2 className="text-purple-700 mb-2">
-          Set Up Your Household
-        </h2>
+        <h2 className="text-purple-700 mb-2">Set Up Your Household</h2>
         <p className="text-purple-500">
           Create a new household or join your roomies!
         </p>
@@ -37,7 +84,7 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
       {!mode && (
         <div className="grid grid-cols-2 gap-6">
           <button
-            onClick={() => setMode('create')}
+            onClick={() => setMode("create")}
             className="bg-gradient-to-br from-yellow-100 to-pink-100 hover:from-yellow-200 hover:to-pink-200 rounded-2xl p-8 border-2 border-purple-200 transition-all hover:shadow-lg hover:scale-105"
           >
             <div className="bg-white/80 p-4 rounded-2xl inline-flex mb-4">
@@ -50,7 +97,7 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
           </button>
 
           <button
-            onClick={() => setMode('join')}
+            onClick={() => setMode("join")}
             className="bg-gradient-to-br from-blue-100 to-purple-100 hover:from-blue-200 hover:to-purple-200 rounded-2xl p-8 border-2 border-purple-200 transition-all hover:shadow-lg hover:scale-105"
           >
             <div className="bg-white/80 p-4 rounded-2xl inline-flex mb-4">
@@ -64,12 +111,10 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
         </div>
       )}
 
-      {mode === 'create' && (
+      {mode === "create" && (
         <div className="space-y-6">
           <div>
-            <label className="text-purple-600 mb-2 block">
-              Household Name
-            </label>
+            <label className="text-purple-600 mb-2 block">Household Name</label>
             <Input
               value={householdName}
               onChange={(e) => setHouseholdName(e.target.value)}
@@ -83,7 +128,8 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
 
           <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-200">
             <p className="text-purple-600 text-sm">
-              💡 <span className="font-medium">Pro tip:</span> You'll get an invite code to share with your roommates after setup!
+              💡 <span className="font-medium">Pro tip:</span> You'll get an
+              invite code to share with your roommates after setup!
             </p>
           </div>
 
@@ -105,12 +151,10 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
         </div>
       )}
 
-      {mode === 'join' && (
+      {mode === "join" && (
         <div className="space-y-6">
           <div>
-            <label className="text-purple-600 mb-2 block">
-              Invite Code
-            </label>
+            <label className="text-purple-600 mb-2 block">Invite Code</label>
             <Input
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value)}

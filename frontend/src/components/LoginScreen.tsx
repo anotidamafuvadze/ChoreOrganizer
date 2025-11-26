@@ -4,6 +4,9 @@ import { Input } from "./ui/input";
 import { MascotIllustration } from "./mascots/MascotIllustration";
 import { signInWithGoogle } from "../firebaseClient";
 import { User } from "../App";
+import { useState } from "react";
+
+// TODO: Display visible error messages for login failures
 
 interface LoginScreenProps {
   onLoginComplete: (forceOnboarding?: boolean) => void;
@@ -14,6 +17,64 @@ export function LoginScreen({
   onLoginComplete,
   currentUser,
 }: LoginScreenProps) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleEmailSignIn = async () => {
+    setError(null);
+    if (!email || !password) return setError("Enter email and password");
+    setLoading(true);
+    try {
+      const resp = await fetch("http://localhost:3000/api/user/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.toLowerCase(), password }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body?.error || "Sign in failed");
+      }
+      const data = await resp.json();
+      // data.user expected
+      onLoginComplete(false);
+    } catch (e: any) {
+      setError(e.message || "Sign in failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogle = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const fbUser = await signInWithGoogle();
+      if (!fbUser || !fbUser.email) throw new Error("Google sign-in failed");
+
+      // sync with backend
+      await fetch("http://localhost:3000/api/user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user: {
+            id: fbUser.uid,
+            name: fbUser.displayName || null,
+            email: fbUser.email.toLowerCase(),
+          },
+          authProvider: "google",
+        }),
+      });
+      onLoginComplete(true);
+    } catch (e: any) {
+      console.error("Google sign-in failed", e);
+      setError(e.message || "Google sign-in failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FFF9E6] via-[#FFE8F5] to-[#E6F7FF] flex items-center justify-center p-8">
       <div className="max-w-md w-full">
@@ -56,6 +117,8 @@ export function LoginScreen({
                 type="email"
                 placeholder="you@college.edu"
                 className="bg-white/80 border-purple-200 rounded-2xl"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
 
@@ -67,11 +130,16 @@ export function LoginScreen({
                 type="password"
                 placeholder="••••••••"
                 className="bg-white/80 border-purple-200 rounded-2xl"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
             </div>
 
+            {error && <div className="text-sm text-red-600 mb-4">{error}</div>}
+
             <Button
-              onClick={() => onLoginComplete()}
+              onClick={handleEmailSignIn}
+              disabled={loading}
               className="w-full bg-gradient-to-r from-purple-400 to-pink-400 hover:from-purple-500 hover:to-pink-500 text-white rounded-2xl shadow-lg py-6"
             >
               <Mail className="w-4 h-4 mr-2" />
@@ -88,16 +156,8 @@ export function LoginScreen({
             </div>
 
             <Button
-              onClick={async () => {
-                try {
-                  await signInWithGoogle();
-                  // After successful Google sign-in, immediately direct the user
-                  // to the preferences/onboarding flow as requested.
-                  onLoginComplete(true);
-                } catch (e) {
-                  console.error("Google sign-in failed", e);
-                }
-              }}
+              onClick={handleGoogle}
+              disabled={loading}
               className="w-full bg-white hover:bg-purple-50 text-purple-600 border-2 border-purple-200 rounded-2xl shadow-md py-6"
             >
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">

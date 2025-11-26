@@ -1,0 +1,220 @@
+import { useState } from "react";
+import { ArrowRight } from "lucide-react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import "../../styles/onboarding.css";
+import { signInWithGoogle } from "../../firebaseClient";
+
+interface AuthenticationStepProps {
+  onNext: (auth: {
+    method: "email" | "google";
+    name?: string | null;
+    pronouns?: string | null;
+    bday?: string | null;
+    email?: string | null;
+    password?: string | null;
+    fbUser?: any; // when method === 'google'
+  }) => void;
+}
+
+export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
+  const [name, setName] = useState("");
+  const [pronouns, setPronouns] = useState("");
+  const [bday, setBday] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const validateEmail = (e: string) => /\S+@\S+\.\S+/.test(e);
+
+  // New helper: check backend if email already exists (returns {exists, data?})
+  async function checkEmailExists(
+    email: string
+  ): Promise<{ exists: boolean; data?: any }> {
+    if (!email) return { exists: false };
+    const backendOrigin =
+      (window as any).__BACKEND_URL || "http://localhost:3000";
+    const endpoints = [
+      `${backendOrigin}/api/user/me?email=${encodeURIComponent(email)}`,
+      `/api/user/me?email=${encodeURIComponent(email)}`,
+    ];
+    let lastErr: any = null;
+    for (const ep of endpoints) {
+      try {
+        const res = await fetch(ep, {
+          method: "GET",
+          mode: "cors",
+          credentials: "include",
+        });
+        if (res.status === 200) {
+          const data = await res.json().catch(() => null);
+          return { exists: true, data };
+        }
+        if (res.status === 404) {
+          return { exists: false };
+        }
+        // for other statuses, try next endpoint
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    // If network errors occurred, treat as "not found" to avoid blocking signup (but log)
+    // Caller may choose to fail-safe; here we allow signup to continue.
+    console.warn("checkEmailExists network errors:", lastErr);
+    return { exists: false };
+  }
+
+  const submitEmailSignup = async () => {
+    setError(null);
+    if (!name.trim()) return setError("Please provide your name.");
+    if (!validateEmail(email)) return setError("Please enter a valid email.");
+    if (!password || password.length < 6)
+      return setError("Password must be at least 6 characters.");
+
+    setLoading(true);
+    try {
+      // Check if the email is already associated with an existing user
+      const { exists, data } = await checkEmailExists(
+        email.trim().toLowerCase()
+      );
+      if (exists) {
+        const who =
+          data && (data.name || data.email)
+            ? ` (${data.name || data.email})`
+            : "";
+        setError(
+          `An account already exists for that email${who}. Please sign in or use a different email.`
+        );
+        return;
+      }
+
+      onNext({
+        method: "email",
+        name: name.trim(),
+        pronouns: pronouns || null,
+        bday: bday || null,
+        email: email.trim().toLowerCase(),
+        password,
+      });
+    } catch (err: any) {
+      setError(err?.message || "Signup failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const fbUser = await signInWithGoogle(); // should return at least { uid, email, displayName }
+      if (!fbUser) throw new Error("Google sign-in failed");
+
+      onNext({
+        method: "google",
+        fbUser,
+        name: fbUser.displayName || name || null,
+        email: fbUser.email || null,
+        pronouns: pronouns || null,
+        bday: bday || null,
+      });
+    } catch (err: any) {
+      setError(err?.message || "Google sign-in failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white/60 backdrop-blur-md rounded-3xl shadow-2xl p-12 border border-purple-100/50">
+      <div className="text-center mb-8">
+        <h2 className="text-purple-700 mb-2">
+          Almost there — create your account
+        </h2>
+        <p className="text-purple-500">
+          Provide a few details and a way to sign in.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 mb-6">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Full name"
+          className="bg-white border-purple-200 rounded-xl"
+        />
+        <Input
+          value={pronouns}
+          onChange={(e) => setPronouns(e.target.value)}
+          placeholder="Pronouns (e.g. they/them)"
+          className="bg-white border-purple-200 rounded-xl"
+        />
+        <Input
+          type="date"
+          value={bday}
+          onChange={(e) => setBday(e.target.value)}
+          placeholder="Birthday"
+          className="bg-white border-purple-200 rounded-xl"
+        />
+        <Input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email address"
+          className="bg-white border-purple-200 rounded-xl"
+        />
+        <Input
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Create a password"
+          type="password"
+          className="bg-white border-purple-200 rounded-xl"
+        />
+      </div>
+
+      {error && <div className="text-sm text-red-600 mb-4">{error}</div>}
+
+      <div className="flex gap-3 mb-4">
+        <Button
+          onClick={submitEmailSignup}
+          disabled={loading}
+          className="flex-1 bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-2xl py-3 disabled:opacity-50"
+        >
+          Continue <ArrowRight className="w-4 h-4 ml-2" />
+        </Button>
+
+        <Button
+          onClick={handleGoogleSignUp}
+          disabled={loading}
+          className="flex items-center gap-2 bg-white border border-purple-200 rounded-2xl py-3 px-4"
+        >
+          <svg
+            className="w-4 h-4"
+            viewBox="0 0 533.5 544.3"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden
+            focusable="false"
+          >
+            <path
+              fill="#4285f4"
+              d="M533.5 278.4c0-18.3-1.6-36-4.6-53.2H272v100.8h146.9c-6.3 34.2-25 63.2-53.3 82.7v68.7h86.2c50.4-46.4 81.7-115 81.7-199z"
+            />
+            <path
+              fill="#34a853"
+              d="M272 544.3c72.5 0 133.3-24 177.8-65.2l-86.2-68.7c-24 16.1-54.8 25.6-91.6 25.6-70.5 0-130.3-47.6-151.7-111.5H31.7v69.8C76.2 487.8 167.2 544.3 272 544.3z"
+            />
+            <path
+              fill="#fbbc04"
+              d="M120.3 328.7c-10.7-31.7-10.7-65.9 0-97.6V161.3H31.7C-3.9 223.5-3.9 320.8 31.7 382.9l88.6-54.2z"
+            />
+            <path
+              fill="#ea4335"
+              d="M272 107.7c39.3 0 74.5 13.5 102.3 40.1l76.6-76.6C405.3 24.9 344.5 0 272 0 167.2 0 76.2 56.5 31.7 142.9l88.6 69.8C141.7 155.3 201.5 107.7 272 107.7z"
+            />
+          </svg>
+          <span>Sign in with Google</span>
+        </Button>
+      </div>
+    </div>
+  );
+}

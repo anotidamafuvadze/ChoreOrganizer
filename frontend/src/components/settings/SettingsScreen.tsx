@@ -65,6 +65,12 @@ export function SettingsScreen({
     roommateUpdates: false,
   });
   const [copied, setCopied] = useState(false);
+  const [emailInput, setEmailInput] = useState(currentUser.email || "");
+  const [newPassword, setNewPassword] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const handleNotificationToggle = (
     key: keyof typeof notifications,
@@ -86,6 +92,60 @@ export function SettingsScreen({
       }
     } catch (e) {
       console.warn("Failed to propagate profile change", e);
+    }
+  };
+
+  const changeEmail = async (newEmail: string) => {
+    setEmailError(null);
+    if (!newEmail || newEmail === currentUser.email) return;
+    setSavingEmail(true);
+    try {
+      const resp = await fetch(
+        `http://localhost:3000/api/user/${currentUser.id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: newEmail.toLowerCase() }),
+        }
+      );
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to update email");
+      }
+      const body = await resp.json();
+      if (onUpdateUser && body.user) onUpdateUser(body.user);
+    } catch (e: any) {
+      setEmailError(e.message || "Failed to update email");
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const changePassword = async (pw: string) => {
+    setPasswordError(null);
+    if (!pw || pw.length < 6)
+      return setPasswordError("Password must be at least 6 characters");
+    setSavingPassword(true);
+    try {
+      const resp = await fetch(
+        `http://localhost:3000/api/user/${currentUser.id}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: pw }),
+        }
+      );
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to update password");
+      }
+      const body = await resp.json();
+      if (onUpdateUser && body.user) onUpdateUser(body.user);
+      setNewPassword("");
+    } catch (e: any) {
+      setPasswordError(e.message || "Failed to update password");
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -172,10 +232,59 @@ export function SettingsScreen({
                     Pronouns
                   </label>
                   <Input
-                    defaultValue="they/them"
+                    defaultValue={currentUser.pronouns || "they/them"}
                     onBlur={(e: any) => changePronouns(e.target?.value)}
                     className="bg-white/80 border-purple-200 rounded-2xl"
                   />
+                </div>
+
+                <div>
+                  <label className="text-purple-600 text-sm mb-2 block">
+                    Email
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      onBlur={(e) => changeEmail(e.target.value)}
+                      className="bg-white/80 border-purple-200 rounded-2xl"
+                    />
+                    <Button
+                      onClick={() => changeEmail(emailInput)}
+                      disabled={savingEmail}
+                      className="bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-2xl"
+                    >
+                      Save
+                    </Button>
+                  </div>
+                  {emailError ? (
+                    <p className="text-sm text-red-600 mt-1">{emailError}</p>
+                  ) : null}
+                </div>
+
+                <div>
+                  <label className="text-purple-600 text-sm mb-2 block">
+                    Change Password
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="New password"
+                      type="password"
+                      className="bg-white/80 border-purple-200 rounded-2xl"
+                    />
+                    <Button
+                      onClick={() => changePassword(newPassword)}
+                      disabled={savingPassword}
+                      className="bg-white border border-purple-200 text-purple-700 rounded-2xl"
+                    >
+                      Update
+                    </Button>
+                  </div>
+                  {passwordError ? (
+                    <p className="text-sm text-red-600 mt-1">{passwordError}</p>
+                  ) : null}
                 </div>
 
                 <div>

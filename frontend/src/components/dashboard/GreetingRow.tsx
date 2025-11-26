@@ -8,15 +8,16 @@ interface GreetingRowProps {
 
 // TODO: Replace with real roommates data fetching
 const roommates: User[] = [
-  { id: "2", name: "Alex", mascot: "cat", color: "#A7C7E7", preferences: {} },
+  { id: "2", name: "Alex", pronouns: "they/them", mascot: "cat", color: "#A7C7E7", preferences: {} },
   {
     id: "3",
     name: "Jamie",
+    pronouns: "she/her",
     mascot: "bunny",
     color: "#E6B8FF",
     preferences: {},
   },
-  { id: "4", name: "Sam", mascot: "fox", color: "#FFDAB9", preferences: {} },
+  { id: "4", name: "Sam", pronouns: "they/them", mascot: "fox", color: "#FFDAB9", preferences: {} },
 ];
 
 export function GreetingRow({ currentUser }: GreetingRowProps) {
