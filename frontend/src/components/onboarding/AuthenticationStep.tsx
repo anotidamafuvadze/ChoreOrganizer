@@ -13,7 +13,7 @@ interface AuthenticationStepProps {
     bday?: string | null;
     email?: string | null;
     password?: string | null;
-    fbUser?: any; // when method === 'google'
+    fbUser?: any;
   }) => void;
 }
 
@@ -26,66 +26,63 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const validateEmail = (e: string) => /\S+@\S+\.\S+/.test(e);
+  const validateEmail = (email: string) => /\S+@\S+\.\S+/.test(email);
 
-  // New helper: check backend if email already exists (returns {exists, data?})
-  async function checkEmailExists(
-    email: string
-  ): Promise<{ exists: boolean; data?: any }> {
+  const checkEmailExists = async (email: string): Promise<{ exists: boolean; data?: any }> => {
     if (!email) return { exists: false };
-    const backendOrigin =
-      (window as any).__BACKEND_URL || "http://localhost:3000";
-    const endpoints = [
-      `${backendOrigin}/api/user/me?email=${encodeURIComponent(email)}`,
-      `/api/user/me?email=${encodeURIComponent(email)}`,
-    ];
-    let lastErr: any = null;
-    for (const ep of endpoints) {
-      try {
-        const res = await fetch(ep, {
-          method: "GET",
-          mode: "cors",
-          credentials: "include",
-        });
-        if (res.status === 200) {
-          const data = await res.json().catch(() => null);
-          return { exists: true, data };
-        }
-        if (res.status === 404) {
-          return { exists: false };
-        }
-        // for other statuses, try next endpoint
-      } catch (e) {
-        lastErr = e;
+
+    // TODO: Implement proper user lookup with backend authentication service
+    const endpoint = `http://localhost:3000/api/user/me?email=${encodeURIComponent(email)}`;
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "GET",
+        mode: "cors",
+        credentials: "include",
+      });
+
+      if (res.status === 200) {
+        const data = await res.json().catch(() => null);
+        return { exists: true, data };
       }
+
+      if (res.status === 404) {
+        return { exists: false };
+      }
+    } catch (error) {
+      // Network error - treat as email doesn't exist to proceed
+      return { exists: false };
     }
-    // If network errors occurred, treat as "not found" to avoid blocking signup (but log)
-    // Caller may choose to fail-safe; here we allow signup to continue.
-    console.warn("checkEmailExists network errors:", lastErr);
+
     return { exists: false };
-  }
+  };
 
   const submitEmailSignup = async () => {
     setError(null);
-    if (!name.trim()) return setError("Please provide your name.");
-    if (!validateEmail(email)) return setError("Please enter a valid email.");
-    if (!password || password.length < 6)
-      return setError("Password must be at least 6 characters.");
+    
+    if (!name.trim()) {
+      setError("Please provide your name.");
+      return;
+    }
+    
+    if (!validateEmail(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    
+    if (!password || password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
 
     setLoading(true);
+    
     try {
-      // Check if the email is already associated with an existing user
-      const { exists, data } = await checkEmailExists(
-        email.trim().toLowerCase()
-      );
+      const { exists, data } = await checkEmailExists(email.trim().toLowerCase());
+
       if (exists) {
-        const who =
-          data && (data.name || data.email)
-            ? ` (${data.name || data.email})`
-            : "";
-        setError(
-          `An account already exists for that email${who}. Please sign in or use a different email.`
-        );
+        const userInfo = data?.name || data?.email ? ` (${data.name || data.email})` : "";
+        setError(`An account already exists for this email${userInfo}. Please sign in or use a different email.`);
         return;
       }
 
@@ -97,8 +94,8 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
         email: email.trim().toLowerCase(),
         password,
       });
-    } catch (err: any) {
-      setError(err?.message || "Signup failed");
+    } catch (error) {
+      setError("Unable to verify email. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -107,9 +104,27 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
   const handleGoogleSignUp = async () => {
     setError(null);
     setLoading(true);
+    
     try {
-      const fbUser = await signInWithGoogle(); // should return at least { uid, email, displayName }
-      if (!fbUser) throw new Error("Google sign-in failed");
+      const fbUser = await signInWithGoogle();
+      
+      if (!fbUser || !fbUser.email) {
+        setError("Google sign-in failed. Please try again.");
+        return;
+      }
+
+      // Check if email already exists
+      try {
+        const { exists, data } = await checkEmailExists(fbUser.email.trim().toLowerCase());
+        if (exists) {
+          const userInfo = data?.user?.name || data?.user?.email ? ` (${data.user?.name || data.user?.email})` : "";
+          setError(`An account already exists for ${fbUser.email}${userInfo}. Please sign in instead or use the same provider.`);
+          return;
+        }
+      } catch (e) {
+        setError("Unable to verify Google account email. Please try again.");
+        return;
+      }
 
       onNext({
         method: "google",
@@ -119,8 +134,8 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
         pronouns: pronouns || null,
         bday: bday || null,
       });
-    } catch (err: any) {
-      setError(err?.message || "Google sign-in failed");
+    } catch (error) {
+      setError("Google sign-in failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -129,12 +144,8 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
   return (
     <div className="bg-white/60 backdrop-blur-md rounded-3xl shadow-2xl p-12 border border-purple-100/50">
       <div className="text-center mb-8">
-        <h2 className="text-purple-700 mb-2">
-          Almost there — create your account
-        </h2>
-        <p className="text-purple-500">
-          Provide a few details and a way to sign in.
-        </p>
+        <h2 className="text-purple-700 mb-2">Almost there — create your account</h2>
+        <p className="text-purple-500">Provide a few details and a way to sign in.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 mb-6">
@@ -172,7 +183,11 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
         />
       </div>
 
-      {error && <div className="text-sm text-red-600 mb-4">{error}</div>}
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      )}
 
       <div className="flex gap-3 mb-4">
         <Button

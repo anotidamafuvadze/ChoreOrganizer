@@ -9,7 +9,7 @@ import { useState } from "react";
 // TODO: Display visible error messages for login failures
 
 interface LoginScreenProps {
-  onLoginComplete: (forceOnboarding?: boolean) => void;
+  onLoginComplete: (email?: string, password?: string) => void;
   currentUser?: User | null;
 }
 
@@ -27,20 +27,7 @@ export function LoginScreen({
     if (!email || !password) return setError("Enter email and password");
     setLoading(true);
     try {
-      const resp = await fetch("http://localhost:3000/api/user/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.toLowerCase(), password }),
-      });
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        throw new Error(body?.error || "Sign in failed");
-      }
-      const data = await resp.json();
-      // data.user expected
-      onLoginComplete(false);
-    } catch (e: any) {
-      setError(e.message || "Sign in failed");
+      onLoginComplete(email.toLowerCase(), password);
     } finally {
       setLoading(false);
     }
@@ -51,24 +38,10 @@ export function LoginScreen({
     setLoading(true);
     try {
       const fbUser = await signInWithGoogle();
-      if (!fbUser || !fbUser.email) throw new Error("Google sign-in failed");
+      if (!fbUser || !fbUser.email) return setError("Google sign-in did not return an email");
+      onLoginComplete(String(fbUser.email).toLowerCase());
 
-      // sync with backend
-      await fetch("http://localhost:3000/api/user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user: {
-            id: fbUser.uid,
-            name: fbUser.displayName || null,
-            email: fbUser.email.toLowerCase(),
-          },
-          authProvider: "google",
-        }),
-      });
-      onLoginComplete(true);
     } catch (e: any) {
-      console.error("Google sign-in failed", e);
       setError(e.message || "Google sign-in failed");
     } finally {
       setLoading(false);

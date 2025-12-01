@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Home, ListTodo, Calendar, Trophy, Settings } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Header } from "./components/Header";
@@ -12,8 +11,8 @@ import { CalendarScreen } from "./components/calendar/CalendarScreen";
 import { LeaderboardScreen } from "./components/leaderboard/LeaderboardScreen";
 import { SettingsScreen } from "./components/settings/SettingsScreen";
 
+// Types
 export type Mascot = "frog" | "cat" | "bunny" | "bird" | "fox" | "bear";
-
 export const Mascot = {
   frog: "frog",
   cat: "cat",
@@ -47,230 +46,212 @@ export interface Chore {
 }
 
 export default function App() {
+  // State management
   const [screen, setScreen] = useState<"login" | "onboarding" | "app">("login");
   const [activeView, setActiveView] = useState<
     "home" | "chores" | "calendar" | "leaderboard" | "settings"
   >("home");
-
-  // TODO: Replace with real user and household data fetching from backend/auth context
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [household, setHousehold] = useState<string>("Unit 3B Roomies");
+  const [householdInviteCode, setHouseholdInviteCode] = useState<string | null>(
+    null
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // TODO: Replace mock logic with real authentication
-  const handleLoginComplete = (forceOnboarding?: boolean) => {
-    if (forceOnboarding) {
-      setScreen("onboarding");
-      return;
+  // Send session data to server
+  const sendSessionToServer = async (
+    user: User | null,
+    householdName?: string | null,
+    inviteCode?: string | null
+  ) => {
+    try {
+      await fetch("http://localhost:3000/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user,
+          householdName: householdName ?? null,
+          inviteCode: inviteCode ?? null,
+        }),
+        mode: "cors",
+        credentials: "include",
+      });
+    } catch (error) {
+      // Ignore network errors for session saving
     }
-
-    (async () => {
-      try {
-        const mod = await import("./firebaseClient");
-        const fbAuth = mod && mod.auth ? mod.auth : null;
-        const fbUser = fbAuth && fbAuth.currentUser ? fbAuth.currentUser : null;
-
-        if (fbUser) {
-          try {
-            const token = await fbUser.getIdToken();
-            const res = await fetch("http://localhost:3000/api/user/me", {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-            });
-            if (res.ok) {
-              const data = await res.json();
-              const hasOnboarded =
-                !!(
-                  data &&
-                  data.preferences &&
-                  Object.keys(data.preferences).length > 0
-                ) || !!data.onboardComplete;
-              setScreen(hasOnboarded ? "app" : "onboarding");
-              return;
-            }
-            if (res.status === 404) {
-              setScreen("onboarding");
-              return;
-            }
-          } catch (e) {
-            // backend check failed; fall back to local flag
-          }
-
-          try {
-            const key = `onboarded:${fbUser.uid}`;
-            const onboarded = localStorage.getItem(key) === "1";
-            setScreen(onboarded ? "app" : "onboarding");
-            return;
-          } catch (e) {
-            // ignore localStorage errors
-          }
-        }
-      } catch (e) {
-        // firebase client not available, default to onboarding
-      }
-
-      setScreen("onboarding");
-    })();
   };
 
-  // helper: normalize chores coming from backend (array or object) and parse dueDate -> Date
-  function normalizeChores(raw: any): Record<string, Chore> {
-    if (!raw) return {};
-    const out: Record<string, Chore> = {};
-    if (Array.isArray(raw)) {
-      raw.forEach((c: any) => {
-        out[c.id] = {
-          id: c.id,
-          name: c.name,
-          icon: c.icon,
-          frequency: c.frequency,
-          points: c.points,
-          assignedTo: c.assignedTo,
-          dueDate: c.dueDate
-            ? new Date(c.dueDate)
-            : c.dueDate === null
-            ? (null as any)
-            : new Date(),
-          completed: !!c.completed,
-        } as Chore;
-      });
-      return out;
-    }
-    // object/map form
-    Object.entries(raw).forEach(([k, v]: any) => {
-      const c = v as any;
-      out[k] = {
-        id: c.id || k,
-        name: c.name,
-        icon: c.icon,
-        frequency: c.frequency,
-        points: c.points,
-        assignedTo: c.assignedTo,
-        dueDate: c.dueDate
-          ? new Date(c.dueDate)
-          : c.dueDate === null
-          ? (null as any)
-          : new Date(),
-        completed: !!c.completed,
-      } as Chore;
-    });
-    return out;
-  }
-
-  // Small helper to print curl examples and quick Firestore inspection hints to the console
-  function printCurlExamples(exampleEmail?: string, exampleUid?: string) {
-    const backendOrigin =
-      (window as any).__BACKEND_URL || "http://localhost:3000";
-    const email = exampleEmail || "you@example.com";
-    const uid = exampleUid || "<user-id>";
-
-    console.log(
-      "=== Quick curl examples to inspect your backend / Firestore ==="
-    );
-    console.log(
-      `GET user by email:\n  curl "${backendOrigin}/api/user/me?email=${encodeURIComponent(
-        email
-      )}" -v`
-    );
-    console.log(
-      `GET user by uid:\n  curl "${backendOrigin}/api/user/me?uid=${encodeURIComponent(
-        uid
-      )}" -v`
-    );
-    console.log(
-      `POST create/merge user (sample):\n  curl -X POST "${backendOrigin}/api/user" -H "Content-Type: application/json" -d '${JSON.stringify(
-        { user: { email, name: "Your Name" } },
-        null,
-        2
-      )}' -v`
-    );
-    console.log(
-      `Backend debug endpoint:\n  curl "${backendOrigin}/api/registerUsers/__debug?email=${encodeURIComponent(
-        email
-      )}" -v`
-    );
-    console.log("");
-    console.log("Inspect Firestore:");
-    console.log(
-      "- Open Firebase console: https://console.firebase.google.com → Project → Firestore Database → Data"
-    );
-    console.log(
-      "- Or use a small Node script with firebase-admin (example):\n\n  // scripts/getUserByEmail.js\n  // run: node scripts/getUserByEmail.js your-project-id youremail@example.com\n  // (script should initialize firebase-admin with credentials and query users collection)\n"
-    );
-  }
-
-  // Listen for Firebase auth changes (if Firebase is configured) and map to our app User
+  // Restore session from server cookies on initial load
   useEffect(() => {
-    let unsub: () => void;
-    const mod = import("./firebaseClient")
-      .then((mod) => {
-        if (mod && typeof mod.onAuthChange === "function") {
-          // inside existing useEffect -> mod.onAuthChange callback
-          unsub = mod.onAuthChange(async (fbUser: any) => {
-            if (fbUser) {
-              // Non-verified backend: fetch server-side user doc by uid query param
-              let serverUser = null;
-              try {
-                const uid = fbUser.uid;
-                const res = await fetch(
-                  `http://localhost:3000/api/user/me?uid=${encodeURIComponent(
-                    uid
-                  )}`
-                );
-                if (res.ok) {
-                  serverUser = await res.json();
-                } else if (res.status === 404) {
-                  serverUser = null;
-                } else {
-                  console.warn("Unexpected /api/user/me status", res.status);
-                }
-              } catch (err) {
-                console.warn("Failed to fetch /api/user/me:", err);
-              }
+    let cancelled = false;
 
-              const mapped: User = {
-                id: fbUser.uid,
-                name:
-                  (serverUser && serverUser.name) ||
-                  fbUser.displayName ||
-                  (fbUser.email ? fbUser.email.split("@")[0] : "You"),
-                pronouns: (serverUser && serverUser.pronouns) || "",
-                mascot: (serverUser && serverUser.mascot) || "cat",
-                color: (serverUser && serverUser.color) || "#FFB6C1",
-                preferences: (serverUser && serverUser.preferences) || {},
-                chores: normalizeChores(
-                  serverUser && serverUser.chores ? serverUser.chores : {}
-                ),
-              };
+    // TODO: Ensure logged out users don't trigger session restore  
+    // const params = new URLSearchParams(window.location.search);
+    // if (params.get("logged_out")) {
+    //   const clean = window.location.pathname + window.location.hash;
+    //   window.history.replaceState({}, "", clean);
+    //   setLoading(false);
+    //   setScreen("login");
+    //   return;
+    // }
 
-              setCurrentUser(mapped);
-              setScreen("app");
-            } else {
-              setCurrentUser(null);
-              setScreen("login");
-            }
-          });
+    const restoreSession = async () => {
+      try {
+        const res = await fetch("http://localhost:3000/api/session", {
+          method: "GET",
+          mode: "cors",
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          if (!cancelled) setLoading(false);
+          return;
         }
-      })
-      .catch((e) => {
-        // If import fails (no firebase configured), do nothing.
-        // Keep the app usable with mock onboarding flow.
-        // console.warn('Firebase auth not available', e)
-      });
+
+        const data = await res.json().catch(() => null);
+        if (!data?.user || cancelled) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+
+        setCurrentUser(data.user);
+        if (data.householdName) setHousehold(data.householdName);
+        if (data.inviteCode) setHouseholdInviteCode(data.inviteCode);
+        setScreen("app");
+      } catch (error) {
+        // Ignore network errors during session restoration
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    restoreSession();
 
     return () => {
-      if (typeof unsub === "function") unsub();
+      cancelled = true;
     };
   }, []);
 
-  // updated signature to accept chores param
+  // Clear error after 5 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  // Handle login completion
+  type LoginUserResponse = {
+    user: User;
+    inviteCode: string;
+    householdId: string;
+    householdName: string;
+  };
+
+  const handleLoginComplete = async (email?: string, password?: string) => {
+    setError(null);
+
+    // Email/password login
+    if (email && password) {
+      try {
+        const res = await fetch("http://localhost:3000/api/user/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+          mode: "cors",
+          credentials: "include",
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok || !data?.user) {
+          setError("Login failed. Please check your credentials.");
+          setScreen("onboarding");
+          return;
+        }
+
+        setCurrentUser(data.user);
+        setHousehold(data.householdName);
+        setHouseholdInviteCode(data?.inviteCode ?? null);
+        await sendSessionToServer(
+          data.user,
+          data.householdName,
+          data?.inviteCode ?? null
+        );
+        setScreen("app");
+        setLoading(false);
+        return;
+      } catch (error) {
+        setError("Network error. Please check your connection.");
+        setScreen("onboarding");
+        return;
+      }
+    }
+
+    // Google (Firebase) login
+    try {
+      const mod = await import("./firebaseClient");
+      const fbAuth = mod?.auth ?? null;
+      const fbUser = fbAuth?.currentUser ?? null;
+
+      if (!fbUser || !fbUser.email) {
+        setError("Google login failed. Please try again.");
+        setScreen("onboarding");
+        return;
+      }
+
+      const res = await fetch("http://localhost:3000/api/user/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: fbUser.email,
+          authProvider: "google",
+        }),
+        mode: "cors",
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.status === 404 || !data?.user) {
+        setError("Account not found. Please sign up first.");
+        setScreen("onboarding");
+        return;
+      }
+
+      if (!res.ok) {
+        setError("Login error. Please try again.");
+        setScreen("onboarding");
+        return;
+      }
+
+      setCurrentUser(data.user);
+      setHousehold(data.householdName);
+      setHouseholdInviteCode(data?.inviteCode ?? null);
+      await sendSessionToServer(
+        data.user,
+        data.householdName,
+        data?.inviteCode ?? null
+      );
+      setScreen("app");
+      setLoading(false);
+    } catch (error) {
+      setError("Google login failed. Please try again.");
+      setScreen("onboarding");
+    }
+  };
+
   const handleOnboardingComplete = async (
     user: User,
     householdName: string,
-    chores: { name: string; frequency: string }[]
+    chores: { name: string; frequency: string }[],
+    inviteCode?: string
   ) => {
+    setError(null);
     const merged: User = { ...user };
+
+    // Merge with existing user data
     if (currentUser) {
       if (currentUser.id) merged.id = currentUser.id;
       if (currentUser.name && currentUser.name !== "You")
@@ -284,210 +265,82 @@ export default function App() {
     setHousehold(householdName);
 
     try {
-      localStorage.setItem(`onboarded:${merged.id}`, "1");
-    } catch (e) {}
-
-    // TODO: get chores through call to backend algorithm
-    // Persist via backend API (no token)
-    try {
-      const payload = {
+      const payload: any = {
         user: {
-          id: merged.id, // IMPORTANT: send id so backend knows which doc to create/merge
+          id: merged.id,
           name: merged.name,
-          bday: (merged as any).bday || null,
+          bday: (merged as any).bday,
           mascot: merged.mascot,
           color: merged.color,
-          preferences: merged.preferences || {},
-          // include client-selected chores (array of {name, frequency})
-          chores: chores && chores.length ? chores : merged.chores || {},
-          email: merged.email || null,
-          password: merged.password || null,
+          preferences: merged.preferences,
+          chores: chores && chores.length ? chores : merged.chores,
+          email: merged.email,
+          password: merged.password,
         },
-        householdName,
       };
 
-      console.log(
-        "App.handleOnboardingComplete - POST /api/user payload:",
-        JSON.stringify(payload, null, 2)
-      );
+      if (inviteCode) {
+        payload.inviteCode = inviteCode;
+      } else {
+        payload.householdName = householdName;
+      }
 
-      // Prefer explicit backend origin first (avoids hitting Vite dev server at :5173)
-      const backendOrigin =
-        (window as any).__BACKEND_URL || "http://localhost:3000";
-      const endpoints = [`${backendOrigin}/api/user`, "/api/user"];
-      let lastErr: any = null;
-      let res: Response | null = null;
+      const res = await fetch("http://localhost:3000/api/user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        mode: "cors",
+        credentials: "include",
+      });
 
-      for (const ep of endpoints) {
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.user) {
+        setError("Failed to save profile. Please try again.");
+      } else {
         try {
-          console.log("Attempting POST to", ep);
-          res = await fetch(ep, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-            mode: "cors",
-            credentials: "include",
-            cache: "no-store",
-          });
-          console.log(
-            `Response from ${ep}: url=${res.url} status=${res.status} ${res.statusText}`
-          );
-          // Log important response headers that affect CORS
-          try {
-            console.log(
-              "Response headers (sample):",
-              "Access-Control-Allow-Origin=",
-              res.headers.get("access-control-allow-origin"),
-              "Access-Control-Allow-Credentials=",
-              res.headers.get("access-control-allow-credentials"),
-              "Access-Control-Allow-Methods=",
-              res.headers.get("access-control-allow-methods")
-            );
-          } catch (hErr) {
-            console.warn("Could not read response headers:", hErr);
+          if (inviteCode) {
+            if (data.householdName) setHousehold(data.householdName);
+          } else if (data.inviteCode) {
+            const inviteCodeCreated = data.inviteCode;
+            setHouseholdInviteCode(inviteCodeCreated);
+            await sendSessionToServer(merged, householdName, inviteCodeCreated);
           }
-          break;
-        } catch (e) {
-          lastErr = e;
-          console.warn(`Failed to fetch ${ep}:`, e);
+        } catch (error) {
+          setError("Error processing household data.");
         }
       }
-
-      if (!res) {
-        console.error("All fetch attempts failed, last error:", lastErr);
-
-        // Probe backend debug endpoints to provide more diagnostic info in console
-        try {
-          const dbg = await fetch(`${backendOrigin}/__server_debug`, {
-            method: "GET",
-            mode: "cors",
-            credentials: "include",
-          });
-          console.log("/__server_debug status:", dbg.status, "url:", dbg.url);
-          const dbgBody = await dbg.text().catch(() => "<no body>");
-          console.log("/__server_debug body (text):", dbgBody);
-          try {
-            console.log(
-              "Debug headers:",
-              "Access-Control-Allow-Origin=",
-              dbg.headers.get("access-control-allow-origin")
-            );
-          } catch {}
-        } catch (e) {
-          console.warn("Failed to reach backend __server_debug:", e);
-        }
-
-        try {
-          const dbg2 = await fetch(
-            `${backendOrigin}/api/registerUsers/__debug`,
-            { method: "GET", mode: "cors", credentials: "include" }
-          );
-          console.log(
-            "/api/registerUsers/__debug status:",
-            dbg2.status,
-            "url:",
-            dbg2.url
-          );
-          const dbg2Body = await dbg2.text().catch(() => "<no body>");
-          console.log("/api/registerUsers/__debug body (text):", dbg2Body);
-          try {
-            console.log(
-              "Debug2 headers:",
-              "Access-Control-Allow-Origin=",
-              dbg2.headers.get("access-control-allow-origin")
-            );
-          } catch {}
-        } catch (e) {
-          console.warn("Failed to reach /api/registerUsers/__debug:", e);
-        }
-
-        throw lastErr;
-      }
-
-      let responseBody: any = null;
-      try {
-        responseBody = await res.json().catch(() => null);
-        console.log(
-          "App.handleOnboardingComplete - /api/user response body:",
-          responseBody
-        );
-        // Print curl examples and debug hints (includes detected email/id where possible)
-        try {
-          const respUser = (responseBody && responseBody.user) || null;
-          const emailToShow =
-            (merged.email as string) ||
-            (respUser && respUser.email) ||
-            undefined;
-          const uidToShow = (respUser && respUser.id) || merged.id || undefined;
-          printCurlExamples(emailToShow, uidToShow);
-        } catch (e) {}
-      } catch (e) {
-        const text = await res.text().catch(() => "<no body>");
-        console.log(
-          "App.handleOnboardingComplete - /api/user response text:",
-          text
-        );
-      }
-
-      if (res.status === 404) {
-        console.warn(
-          "/api/user returned 404 — trying /api/users as fallback (will help diagnose mount/proxy mismatch)"
-        );
-        try {
-          const res2 = await fetch(`${backendOrigin}/api/users`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-            mode: "cors",
-            credentials: "include",
-          });
-          console.log(
-            "App.handleOnboardingComplete - /api/users response status:",
-            res2.status,
-            res2.statusText
-          );
-          let responseBody2: any = null;
-          try {
-            responseBody2 = await res2.json().catch(() => null);
-            console.log(
-              "App.handleOnboardingComplete - /api/users response body:",
-              responseBody2
-            );
-          } catch (e) {
-            const text = await res2.text().catch(() => "<no body>");
-            console.log(
-              "App.handleOnboardingComplete - /api/users response text:",
-              text
-            );
-          }
-        } catch (e) {
-          console.warn("Failed fallback POST to /api/users:", e);
-        }
-      }
-    } catch (err) {
-      console.error("Error saving onboarding data:", err);
+    } catch (error) {
+      setError("Network error. Please check your connection.");
     } finally {
       setScreen("app");
+      setLoading(false);
     }
   };
+
+  // Navigation configuration
   const navItems = [
     { id: "home" as const, label: "Home", icon: Home },
     { id: "chores" as const, label: "Chores", icon: ListTodo },
-    {
-      id: "calendar" as const,
-      label: "Calendar",
-      icon: Calendar,
-    },
+    { id: "calendar" as const, label: "Calendar", icon: Calendar },
     { id: "leaderboard" as const, label: "MVP", icon: Trophy },
-    {
-      id: "settings" as const,
-      label: "Profile",
-      icon: Settings,
-    },
+    { id: "settings" as const, label: "Profile", icon: Settings },
   ];
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#FFF9E6] via-[#FFE8F5] to-[#E6F7FF]">
+        <div aria-live="polite" className="text-gray-500">
+          Loading...
+        </div>
+      </div>
+    );
+  }
+
+  // Render screens based on current state
   if (screen === "login") {
     return (
       <LoginScreen
@@ -503,7 +356,23 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FFF9E6] via-[#FFE8F5] to-[#E6F7FF] pb-24">
-      <Header household={household} />
+      {/* Error Toast Notification */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
+          >
+            <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-3 rounded-lg shadow-lg flex items-center gap-2">
+              <span className="text-sm font-medium">{error}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <Header household={household} inviteCode={householdInviteCode} />
 
       <main className="max-w-7xl mx-auto px-8 py-6">
         <AnimatePresence mode="wait">

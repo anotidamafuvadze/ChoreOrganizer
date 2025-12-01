@@ -4,7 +4,8 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 
 interface HouseholdStepProps {
-  onNext: (householdName: string) => void;
+  // onNext now accepts an optional inviteCode so parent can store it in onboarding state
+  onNext: (householdName: string, inviteCode?: string) => void;
 }
 
 export function HouseholdStep({ onNext }: HouseholdStepProps) {
@@ -14,55 +15,35 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
 
   const handleContinue = async () => {
     if (mode === "create" && householdName) {
+      // Explicitly call with no inviteCode for create flow
       onNext(householdName);
     } else if (mode === "join" && inviteCode) {
       try {
-        // try to include firebase user id if available so backend can add the user to the household
-        let userId: string | null = null;
-        try {
-          const mod = await import("../../firebaseClient").catch(
-            () => null
-          );
-          const fbAuth = mod && mod.auth ? mod.auth : null;
-          const fbUser =
-            fbAuth && fbAuth.currentUser ? fbAuth.currentUser : null;
-          if (fbUser && fbUser.uid) userId = fbUser.uid;
-        } catch (e) {
-          // ignore; proceed without userId
-        }
+        const code = inviteCode.trim();
+        const res = await fetch(
+          `/api/user/invite/${encodeURIComponent(code)}`,
+          {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          }
+        );
 
-        const res = await fetch("/api/user/join", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ inviteCode: inviteCode.trim(), userId }),
-        });
-
+        // TODO: better display error messages in UI
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           alert(
-            err && err.error
-              ? `Failed to join household: ${err.error}`
-              : "Failed to join household"
+            err?.error
+              ? `Invalid invite: ${err.error}`
+              : "Invite code not found"
           );
           return;
         }
 
-        const data = await res.json();
-        const hh = data && data.household ? data.household : null;
-        if (!hh) {
-          alert("Household not found");
-          return;
-        }
-
-        // store household info (including chores) so subsequent onboarding steps can display chores
-        try {
-          sessionStorage.setItem("joinedHousehold", JSON.stringify(hh));
-        } catch (e) {
-          // ignore storage errors
-        }
-
-        onNext(hh.name || "Joined Household");
+        // Pass household summary and invite code to parent via onNext
+        const hh = await res.json();
+        onNext(hh.name || "Joined Household", code);
       } catch (err) {
+        // TODO: better display error messages in UI
         console.error("Error joining household:", err);
         alert("Error joining household");
       }
