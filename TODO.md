@@ -1,7 +1,7 @@
 ## Algorithms (Most Important)
-TODO: Implement chore organizing algorithm
-TODO: Implement leaderboard algorithm
-TODO: Implement fairness calculation algorithm
+TODO: Implement chore organizing algorithm (Madison)
+TODO: Implement leaderboard algorithm (Madsion)
+TODO: Implement fairness calculation algorithm (Madison)
 
 ## App and Onboarding
 
@@ -18,7 +18,7 @@ TODO: Replace the mock chores in ChoresList component with real chores fetching 
 TODO: Dynamically adjust styling of chore component when it is overdue (noor)
 
 - Fairness Meter
-TODO: Replace mock roomate data with real roomate data fetched from backend
+TODO: Replace mock roomate data with real roomate data fetched from backend (Madison)
 TODO: Replace mock fairness calculation with real data fetched from backend (algorithm)
 TODO: Make messages dynamic based on user and fairness scores
 
@@ -27,7 +27,7 @@ TODO: Replace mock roomate data with real roomate data fetched from backend (noo
 TODO: Replace mock user points with real user points fetched from backend
 
 -Leaderboard Preview
-TODO: Replace mock leaderboard data with real data fetched from backend
+TODO: Replace mock leaderboard data with real data fetched from backend (Madison)
 
 Mini Calendar
 - TODO: Replace mock weekly completion data with real data fetched from backend
