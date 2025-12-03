@@ -3,13 +3,15 @@ TODO: Implement chore organizing algorithm (Madison)
 TODO: Implement leaderboard algorithm (Madsion)
 TODO: Implement fairness calculation algorithm (Madison)
 
-## App and Onboarding
+## App and Onboarding (Anotida)
 
-TODO: Add availability checking to onboarding flow
-TODO: Call chore organizin/leaderboard algorithm in backend upon onboarding completion and implement function that will call algorithm again each week
+TODO: Add availability checking to onboarding flow (Anotida)
+TODO: Call chore organizin/leaderboard algorithm in backend upon onboarding completion and implement function that will call algorithm again each week (Anotida)
 TODO: Ensure user logout actually clears cookies and prevents session restores (Anotida)
 TODO: Verify that users can login using google sign in and information is properly stored in firebase (Anotida)
 TODO: Verify that a user can create and join an existing household (Anotida)
+- adjust the api/user/invite/:code endpoint so that all it does is ensure that when a user is finished onboarding they are added to the proper household
+TODO: Adjust api/user/me enddpoint so that all this does is check if a user already exists (Anotida)
 
 
 ## DashBoard
@@ -44,7 +46,7 @@ TODO: Replace the preference stats with real data fetching from backend on the C
 TODO: Implement edit/add chore functionality on ChoresScreen
 
 
-## Leaderboard Screen 
+## Leaderboard Screen (Madison)
 TODO: Replace mock leaderboard data with real leaderboard data fetched from backend
 
 
