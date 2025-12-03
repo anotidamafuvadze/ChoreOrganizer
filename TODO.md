@@ -32,7 +32,7 @@ TODO: Replace mock leaderboard data with real data fetched from backend
 Mini Calendar
 - TODO: Replace mock weekly completion data with real data fetched from backend
 
-## Calendar Screen
+## Calendar Screen (Laurianie)
 TODO: Replace the Calendar data on the CalendarScreen with real data fetching from backend
 TODO: Add/Implement buttons to navigate to between weeks and months on the CalendarScreen
 TODO: Add a month view on the CalendarScreen
