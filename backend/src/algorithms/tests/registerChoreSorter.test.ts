@@ -56,9 +56,9 @@ describe("buildFlowGraph", () => {
                     icon: "",
                     household: null,
                     preferences: [
-                        { chore: { id: 1, name: "Dishes" }, prefNum: 1 },
-                        { chore: { id: 2, name: "Trash" }, prefNum: 2 },
-                        { chore: { id: 3, name: "Vacuum" }, prefNum: 3 }
+                        { chore: { id: 1, name: "Dishes" }, prefNum: "love" },
+                        { chore: { id: 2, name: "Trash" }, prefNum: "neutral" },
+                        { chore: { id: 3, name: "Vacuum" }, prefNum: "avoid" }
                     ],
                     choreHistory: []
                 },
@@ -68,24 +68,24 @@ describe("buildFlowGraph", () => {
                     icon: "",
                     household: null,
                     preferences: [
-                        { chore: { id: 1, name: "Dishes" }, prefNum: 2 },
-                        { chore: { id: 2, name: "Trash" }, prefNum: 1 },
-                        { chore: { id: 3, name: "Vacuum" }, prefNum: 3 }
+                        { chore: { id: 1, name: "Dishes" }, prefNum: "neutral" },
+                        { chore: { id: 2, name: "Trash" }, prefNum: "love" },
+                        { chore: { id: 3, name: "Vacuum" }, prefNum: "avoid" }
                     ],
                     choreHistory: []
                 }
             ],
             chores: [
-                { id: 1, name: "Dishes" },
-                { id: 2, name: "Trash" },
-                { id: 3, name: "Vacuum" }
+                { assignedTo: "Alice", completed: true, id: "1", name: "Dishes" },
+                { assignedTo: "Bob", completed: true, id: "2", name: "Trash" },
+                { assignedTo: "Alice", completed: true, id: "3", name: "Vacuum" }
             ]
         };
 
         // link household back-to-users (not strictly necessary but mirrors real data)
         household.users.forEach((u: any) => (u.household = household));
 
-        const graph = buildFlowGraph(household, 1);
+        const graph = buildFlowGraph(household);
         const numChoreNodes = graph.nodes.filter((n: any) => n.type === "chore").length;
         const numUserCloneNodes = graph.nodes.filter((n: any) => n.type === "userClone").length;
 

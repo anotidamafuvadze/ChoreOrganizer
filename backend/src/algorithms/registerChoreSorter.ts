@@ -9,7 +9,7 @@ import {
 } from "../users/firebaseHelpers";
 
 type Household = { id: number, name: string, users: User[], chores: Chore[] }
-type Chore = { assignedTo: string, completed: boolean, id: number, name: string }
+type Chore = { assignedTo: string, completed: boolean, id: string, name: string }
 type User = {
     name: String,
     id: string,
@@ -85,7 +85,6 @@ function makeID() {
 
 export function buildFlowGraph(
     household: Household,
-    week: number
 ): FlowGraph {
 
     const nodes: FlowNode[] = [];
@@ -285,7 +284,7 @@ app.post("/assign-chores", (req: Request, res: Response) => {
                 }
 
                 // Build flow network
-                const graph = buildFlowGraph(hh, week);
+                const graph = buildFlowGraph(hh);
 
                 // Compute min cost max flow
                 const result = minCostMaxFlow(graph);
