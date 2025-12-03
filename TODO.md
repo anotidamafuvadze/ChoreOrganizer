@@ -13,6 +13,11 @@ TODO: Verify that a user can create and join an existing household (Anotida)
 - adjust the api/user/invite/:code endpoint so that all it does is ensure that when a user is finished onboarding they are added to the proper household
 TODO: Adjust api/user/me enddpoint so that all this does is check if a user already exists (Anotida)
 
+Notes:
+- Person who created household pushes "start button"
+- If a new user joins past the start date then they have to wait the following week to get their chores 
+- Algorithm called once each week
+
 
 ## DashBoard
 - Chore List
