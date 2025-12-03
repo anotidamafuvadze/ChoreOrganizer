@@ -2,6 +2,11 @@ import express, { Request, Response } from "express";
 const app = express();
 app.use(express.json());
 
+// Delegated firebase-admin / Firestore helpers
+import {
+    fetchHouseholdFromFirestore,
+    fetchUserByUid,
+} from "./firebaseAdmin";
 
 type Household = { id: number, name: string, users: User[], chores: Chore[] }
 type Chore = { id: number, name: string }
@@ -246,32 +251,45 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
 }
 
 app.post("/assign-chores", (req: Request, res: Response) => {
-    const { household, week } = req.body;
+    const { household, householdId, week } = req.body;
 
     try {
-        // Build flow network
-        const graph = buildFlowGraph(household, week);
-
-        // Compute min cost max flow
-        const result = minCostMaxFlow(graph);
-
-        // Build lookup maps
-        for (const node of graph.nodes) {
-            if (node.type === "userClone") {
-                const user = household.users.find((u: User) => {
-                    // clone IDs contain "n-#", we match clones in creation order
-                    return true;
-                });
-            }
+        // If caller sent only householdId, fetch household from Firestore
+        let hh = household;
+        if (!hh && householdId) {
+            // fetch async inside try/catch by wrapping the handler body in an async IIFE
         }
 
-        // More simply: your frontend will match clone IDs → chore IDs
-        // Returning raw assignments is fine
+        (async () => {
+            try {
+                if (!hh && householdId) {
+                    const fetched = await fetchHouseholdFromFirestore(String(householdId));
+                    if (!fetched) {
+                        res.status(404).json({ success: false, error: "Household not found" });
+                        return;
+                    }
+                    hh = fetched;
+                }
 
-        res.json({
-            success: true,
-            flowResult: result
-        });
+                if (!hh) {
+                    res.status(400).json({ success: false, error: "missing household or householdId" });
+                    return;
+                }
+
+                // Build flow network
+                const graph = buildFlowGraph(hh, week);
+
+                // Compute min cost max flow
+                const result = minCostMaxFlow(graph);
+
+                res.json({
+                    success: true,
+                    flowResult: result
+                });
+            } catch (err: any) {
+                res.status(500).json({ success: false, error: err.message });
+            }
+        })();
 
     } catch (err: any) {
         res.status(500).json({
