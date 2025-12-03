@@ -23,6 +23,8 @@ type FlowNodeID = string;
 interface FlowNode {
     id: FlowNodeID;
     type: "source" | "sink" | "userClone" | "chore";
+    // optional metadata carried through the flow graph
+    meta?: any;
 }
 
 interface FlowEdge {
@@ -40,16 +42,17 @@ interface FlowGraph {
 export interface MCMFResult {
     flow: number;
     cost: number;
-    assignments: { userClone: string; choreNode: string }[];
+    // now returns the assigned user's name and the chore's name
+    assignments: { userName: string; choreName: string }[];
 }
 
 /**
  * Method takes in a User and a Chore and, depending on the User's preference about doing the chore and whether the user
- * has already done the chore the week prior, will give a weight to the user doing that chore. weights will vary slightly 
+ * has already done the chore the week prior, will give a weight to the user doing that chore. weights will vary slightly
  * for randomization purposes
- * @param user 
- * @param chore 
- * @returns 
+ * @param user
+ * @param chore
+ * @returns
  */
 function getChoreAssignmentCost(
     user: User,
@@ -112,7 +115,8 @@ export function buildFlowGraph(
         for (let c = 0; c < totalClones; c++) {
             const cloneID = makeID();
             userCloneNodes.push({ user, cloneID });
-            nodes.push({ id: cloneID, type: "userClone" });
+            // attach user metadata so downstream can report names
+            nodes.push({ id: cloneID, type: "userClone", meta: { userId: user.id, userName: user.name } });
 
             edges.push({
                 from: source.id,
@@ -128,7 +132,8 @@ export function buildFlowGraph(
     for (const chore of household.chores) {
         const choreID = makeID();
         choreNodes.push({ chore, id: choreID });
-        nodes.push({ id: choreID, type: "chore" });
+        // attach chore metadata so downstream can report names
+        nodes.push({ id: choreID, type: "chore", meta: { choreId: chore.id, choreName: chore.name } });
 
         edges.push({
             from: choreID,
@@ -234,8 +239,7 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
         cost += pushFlow * dist[sink];
     }
 
-    const assignments: { userClone: string; choreNode: string }[] = [];
-
+    const nameAssignments: { userName: string; choreName: string }[] = [];
     for (let u = 0; u < N; u++) {
         for (const edge of adj[u]) {
             if (
@@ -246,15 +250,16 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
                 graph.nodes[nodeIndex.get(edge.fromNode)!].type === "userClone" &&
                 graph.nodes[nodeIndex.get(edge.toNode)!].type === "chore"
             ) {
-                assignments.push({
-                    userClone: edge.fromNode,
-                    choreNode: edge.toNode
-                });
+                const fromNodeObj = graph.nodes[nodeIndex.get(edge.fromNode)!];
+                const toNodeObj = graph.nodes[nodeIndex.get(edge.toNode)!];
+                const userName = fromNodeObj.meta?.userName ?? String(edge.fromNode);
+                const choreName = toNodeObj.meta?.choreName ?? String(edge.toNode);
+                nameAssignments.push({ userName, choreName });
             }
         }
     }
 
-    return { flow, cost, assignments };
+    return { flow, cost, assignments: nameAssignments };
 }
 
 app.post("/assign-chores", (req: Request, res: Response) => {
