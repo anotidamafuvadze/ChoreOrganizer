@@ -2,20 +2,20 @@ import express, { Request, Response } from "express";
 const app = express();
 app.use(express.json());
 
-// Delegated firebase-admin / Firestore helpers
+// Delegated Firestore helpers (use the users/firebaseHelpers module)
 import {
     fetchHouseholdFromFirestore,
     fetchUserByUid,
-} from "./firebaseAdmin";
+} from "../users/firebaseHelpers";
 
 type Household = { id: number, name: string, users: User[], chores: Chore[] }
-type Chore = { id: number, name: string }
+type Chore = { assignedTo: string, completed: boolean, id: number, name: string }
 type User = {
     name: String,
-    id: number,
+    id: string,
     icon: string,
     household: Household,
-    preferences: [{ chore: Chore, prefNum: number }],
+    preferences: [{ chore: Chore, prefNum: string }],
     choreHistory: [{ week: number, chores: Chore[] }]
 }
 type FlowNodeID = string;
@@ -43,29 +43,35 @@ export interface MCMFResult {
     assignments: { userClone: string; choreNode: string }[];
 }
 
-
+/**
+ * Method takes in a User and a Chore and, depending on the User's preference about doing the chore and whether the user
+ * has already done the chore the week prior, will give a weight to the user doing that chore. weights will vary slightly 
+ * for randomization purposes
+ * @param user 
+ * @param chore 
+ * @returns 
+ */
 function getChoreAssignmentCost(
     user: User,
     chore: Chore,
-    currentWeek: number
 ): number {
     const prefEntry = user.preferences.find(p => p.chore.id === chore.id);
     if (!prefEntry) return 99999;
 
     let baseCost = 0;
     switch (prefEntry.prefNum) {
-        case 1: baseCost = 10; break;
-        case 2: baseCost = 30; break;
-        case 3: baseCost = 200; break;
+        case "love": baseCost = 10; break;
+        case "neutral": baseCost = 30; break;
+        case "avoid": baseCost = 200; break;
         default: baseCost = 100; break;
     }
 
     const noise = Math.floor(Math.random() * 6);
 
-    const lastWeek = user.choreHistory.find(h => h.week === currentWeek - 1);
-    let repeatPenalty = 0;
+    const lastWeek = chore.assignedTo
 
-    if (lastWeek && lastWeek.chores.some(c => c.id === chore.id)) {
+    let repeatPenalty = 0;
+    if (lastWeek === user.id) {
         repeatPenalty = 200;
     }
 
@@ -94,7 +100,9 @@ export function buildFlowGraph(
     const baseChores = Math.floor(numChores / numUsers);
     const extraChores = numChores % numUsers;
 
-    const usersSorted = [...household.users].sort((a, b) => a.id - b.id);
+    const usersSorted = [...household.users].sort((a, b) =>
+        String(a.id).localeCompare(String(b.id))
+    );
 
     const userCloneNodes: { user: User; cloneID: string }[] = [];
 
@@ -137,7 +145,7 @@ export function buildFlowGraph(
                 from: ucn.cloneID,
                 to: cn.id,
                 capacity: 1,
-                cost: getChoreAssignmentCost(ucn.user, cn.chore, week)
+                cost: getChoreAssignmentCost(ucn.user, cn.chore)
             });
         }
     }

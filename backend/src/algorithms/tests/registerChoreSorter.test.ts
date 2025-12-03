@@ -1,4 +1,4 @@
-import { minCostMaxFlow, buildFlowGraph } from "./registerChoreSorter";
+import { minCostMaxFlow, buildFlowGraph } from "../registerChoreSorter";
 
 describe("minCostMaxFlow", () => {
     test("computes max flow with minimal cost on a small graph", () => {
