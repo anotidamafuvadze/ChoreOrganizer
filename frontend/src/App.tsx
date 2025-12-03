@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Home, ListTodo, Calendar, Trophy, Settings } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Header } from "./components/Header";
@@ -12,8 +11,8 @@ import { CalendarScreen } from "./components/calendar/CalendarScreen";
 import { LeaderboardScreen } from "./components/leaderboard/LeaderboardScreen";
 import { SettingsScreen } from "./components/settings/SettingsScreen";
 
+// Types
 export type Mascot = "frog" | "cat" | "bunny" | "bird" | "fox" | "bear";
-
 export const Mascot = {
   frog: "frog",
   cat: "cat",
@@ -26,9 +25,13 @@ export const Mascot = {
 export interface User {
   id: string;
   name: string;
+  pronouns: string;
   mascot: Mascot;
   color: string;
   preferences: Record<string, "love" | "neutral" | "avoid">;
+  chores?: Record<string, Chore>;
+  email?: string;
+  password?: string;
 }
 
 export interface Chore {
@@ -43,118 +46,212 @@ export interface Chore {
 }
 
 export default function App() {
+  // State management
   const [screen, setScreen] = useState<"login" | "onboarding" | "app">("login");
   const [activeView, setActiveView] = useState<
     "home" | "chores" | "calendar" | "leaderboard" | "settings"
   >("home");
-
-  // TODO: Replace with real user and household data fetching from backend/auth context
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [household, setHousehold] = useState<string>("Unit 3B Roomies");
+  const [householdInviteCode, setHouseholdInviteCode] = useState<string | null>(
+    null
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // TODO: Replace mock logic with real authentication
-  const handleLoginComplete = (forceOnboarding?: boolean) => {
-    if (forceOnboarding) {
-      setScreen("onboarding");
-      return;
+  // Send session data to server
+  const sendSessionToServer = async (
+    user: User | null,
+    householdName?: string | null,
+    inviteCode?: string | null
+  ) => {
+    try {
+      await fetch("http://localhost:3000/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user,
+          householdName: householdName ?? null,
+          inviteCode: inviteCode ?? null,
+        }),
+        mode: "cors",
+        credentials: "include",
+      });
+    } catch (error) {
+      // Ignore network errors for session saving
     }
-    // When the user explicitly continues from the login screen, determine
-    // whether to show onboarding or go to the app. Prefer a backend check
-    // (using the Firebase ID token), and fall back to a localStorage per-UID
-    // flag when backend is unreachable.
-    (async () => {
-      try {
-        const mod = await import("./firebaseClient");
-        const fbAuth = mod && mod.auth ? mod.auth : null;
-        const fbUser = fbAuth && fbAuth.currentUser ? fbAuth.currentUser : null;
-
-        if (fbUser) {
-          try {
-            const token = await fbUser.getIdToken();
-            const res = await fetch("/api/user/me", {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-            });
-            if (res.ok) {
-              const data = await res.json();
-              const hasOnboarded =
-                !!(
-                  data &&
-                  data.preferences &&
-                  Object.keys(data.preferences).length > 0
-                ) || !!data.onboardComplete;
-              setScreen(hasOnboarded ? "app" : "onboarding");
-              return;
-            }
-            if (res.status === 404) {
-              setScreen("onboarding");
-              return;
-            }
-          } catch (e) {
-            // backend check failed; fall back to local flag
-          }
-
-          try {
-            const key = `onboarded:${fbUser.uid}`;
-            const onboarded = localStorage.getItem(key) === "1";
-            setScreen(onboarded ? "app" : "onboarding");
-            return;
-          } catch (e) {
-            // ignore localStorage errors
-          }
-        }
-      } catch (e) {
-        // firebase client not available, default to onboarding
-      }
-
-      setScreen("onboarding");
-    })();
   };
 
-  // Listen for Firebase auth changes (if Firebase is configured) and map to our app User
+  // Restore session from server cookies on initial load
   useEffect(() => {
-    let unsub: () => void;
-    const mod = import("./firebaseClient")
-      .then((mod) => {
-        if (mod && typeof mod.onAuthChange === "function") {
-          unsub = mod.onAuthChange((fbUser: { uid: any; displayName: any; email: string; }) => {
-            if (fbUser) {
-              const mapped: User = {
-                id: fbUser.uid,
-                name:
-                  fbUser.displayName ||
-                  (fbUser.email ? fbUser.email.split("@")[0] : "You"),
-                mascot: "cat", // TODO: Retrieve from data base (Anotida)
-                color: "#FFB6C1", // TODO: Retrieve from data base (Anotida)
-                preferences: {}, // TODO: Retrieve from data base (Anotida)
-              };
-              setCurrentUser(mapped);
-              setScreen("app");
-              // Do not auto-navigate here. Keep the login screen visible until the
-              // user explicitly continues (handled by `handleLoginComplete`).
-            } else {
-              setCurrentUser(null);
-              setScreen("login");
-            }
-          });
+    let cancelled = false;
+
+    // TODO: Ensure logged out users don't trigger session restore  
+    // const params = new URLSearchParams(window.location.search);
+    // if (params.get("logged_out")) {
+    //   const clean = window.location.pathname + window.location.hash;
+    //   window.history.replaceState({}, "", clean);
+    //   setLoading(false);
+    //   setScreen("login");
+    //   return;
+    // }
+
+    const restoreSession = async () => {
+      try {
+        const res = await fetch("http://localhost:3000/api/session", {
+          method: "GET",
+          mode: "cors",
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          if (!cancelled) setLoading(false);
+          return;
         }
-      })
-      .catch((e) => {
-        // If import fails (no firebase configured), do nothing.
-        // Keep the app usable with mock onboarding flow.
-        // console.warn('Firebase auth not available', e)
-      });
+
+        const data = await res.json().catch(() => null);
+        if (!data?.user || cancelled) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+
+        setCurrentUser(data.user);
+        if (data.householdName) setHousehold(data.householdName);
+        if (data.inviteCode) setHouseholdInviteCode(data.inviteCode);
+        setScreen("app");
+      } catch (error) {
+        // Ignore network errors during session restoration
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    restoreSession();
 
     return () => {
-      if (typeof unsub === "function") unsub();
+      cancelled = true;
     };
   }, []);
-  // TODO: Replace mock logic with real onboarding completion in backend
-  const handleOnboardingComplete = (user: User, householdName: string) => {
-    // Preserve Firebase-authenticated name/id when present so Google displayName isn't overwritten
+
+  // Clear error after 5 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  // Handle login completion
+  type LoginUserResponse = {
+    user: User;
+    inviteCode: string;
+    householdId: string;
+    householdName: string;
+  };
+
+  const handleLoginComplete = async (email?: string, password?: string) => {
+    setError(null);
+
+    // Email/password login
+    if (email && password) {
+      try {
+        const res = await fetch("http://localhost:3000/api/user/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+          mode: "cors",
+          credentials: "include",
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok || !data?.user) {
+          setError("Login failed. Please check your credentials.");
+          setScreen("onboarding");
+          return;
+        }
+
+        setCurrentUser(data.user);
+        setHousehold(data.householdName);
+        setHouseholdInviteCode(data?.inviteCode ?? null);
+        await sendSessionToServer(
+          data.user,
+          data.householdName,
+          data?.inviteCode ?? null
+        );
+        setScreen("app");
+        setLoading(false);
+        return;
+      } catch (error) {
+        setError("Network error. Please check your connection.");
+        setScreen("onboarding");
+        return;
+      }
+    }
+
+    // Google (Firebase) login
+    try {
+      const mod = await import("./firebaseClient");
+      const fbAuth = mod?.auth ?? null;
+      const fbUser = fbAuth?.currentUser ?? null;
+
+      if (!fbUser || !fbUser.email) {
+        setError("Google login failed. Please try again.");
+        setScreen("onboarding");
+        return;
+      }
+
+      const res = await fetch("http://localhost:3000/api/user/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: fbUser.email,
+          authProvider: "google",
+        }),
+        mode: "cors",
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.status === 404 || !data?.user) {
+        setError("Account not found. Please sign up first.");
+        setScreen("onboarding");
+        return;
+      }
+
+      if (!res.ok) {
+        setError("Login error. Please try again.");
+        setScreen("onboarding");
+        return;
+      }
+
+      setCurrentUser(data.user);
+      setHousehold(data.householdName);
+      setHouseholdInviteCode(data?.inviteCode ?? null);
+      await sendSessionToServer(
+        data.user,
+        data.householdName,
+        data?.inviteCode ?? null
+      );
+      setScreen("app");
+      setLoading(false);
+    } catch (error) {
+      setError("Google login failed. Please try again.");
+      setScreen("onboarding");
+    }
+  };
+
+  const handleOnboardingComplete = async (
+    user: User,
+    householdName: string,
+    chores: { name: string; frequency: string }[],
+    inviteCode?: string
+  ) => {
+    setError(null);
     const merged: User = { ...user };
+
+    // Merge with existing user data
     if (currentUser) {
       if (currentUser.id) merged.id = currentUser.id;
       if (currentUser.name && currentUser.name !== "You")
@@ -164,33 +261,86 @@ export default function App() {
       if (!merged.color && currentUser.color) merged.color = currentUser.color;
     }
 
-    setCurrentUser(merged); // TODO: Update in backend/auth context as well
-    setHousehold(householdName); // TODO: Update in backend/auth context as well
-    // Mark this uid as onboarded locally; backend persistence can be added later
+    setCurrentUser(merged);
+    setHousehold(householdName);
+
     try {
-      localStorage.setItem(`onboarded:${merged.id}`, "1");
-    } catch (e) {
-      // ignore
+      const payload: any = {
+        user: {
+          id: merged.id,
+          name: merged.name,
+          bday: (merged as any).bday,
+          mascot: merged.mascot,
+          color: merged.color,
+          preferences: merged.preferences,
+          chores: chores && chores.length ? chores : merged.chores,
+          email: merged.email,
+          password: merged.password,
+        },
+      };
+
+      if (inviteCode) {
+        payload.inviteCode = inviteCode;
+      } else {
+        payload.householdName = householdName;
+      }
+
+      const res = await fetch("http://localhost:3000/api/user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        mode: "cors",
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.user) {
+        setError("Failed to save profile. Please try again.");
+      } else {
+        try {
+          if (inviteCode) {
+            if (data.householdName) setHousehold(data.householdName);
+          } else if (data.inviteCode) {
+            const inviteCodeCreated = data.inviteCode;
+            setHouseholdInviteCode(inviteCodeCreated);
+            await sendSessionToServer(merged, householdName, inviteCodeCreated);
+          }
+        } catch (error) {
+          setError("Error processing household data.");
+        }
+      }
+    } catch (error) {
+      setError("Network error. Please check your connection.");
+    } finally {
+      setScreen("app");
+      setLoading(false);
     }
-    setScreen("app");
   };
 
+  // Navigation configuration
   const navItems = [
     { id: "home" as const, label: "Home", icon: Home },
     { id: "chores" as const, label: "Chores", icon: ListTodo },
-    {
-      id: "calendar" as const,
-      label: "Calendar",
-      icon: Calendar,
-    },
+    { id: "calendar" as const, label: "Calendar", icon: Calendar },
     { id: "leaderboard" as const, label: "MVP", icon: Trophy },
-    {
-      id: "settings" as const,
-      label: "Profile",
-      icon: Settings,
-    },
+    { id: "settings" as const, label: "Profile", icon: Settings },
   ];
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#FFF9E6] via-[#FFE8F5] to-[#E6F7FF]">
+        <div aria-live="polite" className="text-gray-500">
+          Loading...
+        </div>
+      </div>
+    );
+  }
+
+  // Render screens based on current state
   if (screen === "login") {
     return (
       <LoginScreen
@@ -206,7 +356,23 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FFF9E6] via-[#FFE8F5] to-[#E6F7FF] pb-24">
-      <Header household={household} />
+      {/* Error Toast Notification */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
+          >
+            <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-3 rounded-lg shadow-lg flex items-center gap-2">
+              <span className="text-sm font-medium">{error}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <Header household={household} inviteCode={householdInviteCode} />
 
       <main className="max-w-7xl mx-auto px-8 py-6">
         <AnimatePresence mode="wait">

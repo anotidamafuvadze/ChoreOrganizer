@@ -3,19 +3,13 @@ TODO: Implement chore organizing algorithm
 TODO: Implement leaderboard algorithm
 TODO: Implement fairness calculation algorithm
 
-## App and Onboarding (Must finish before below tasks)
-- Onboarding
-TODO: Add Onboarding steps/screens that retrieve user availability and user info (name, bday, etc)
-TODO: Randomly generate invite code and present to user (seperate screen)
-TODO: Randomly generate user uuid
+## App and Onboarding
 
-- App
-TODO: Implement user login/sign up and authentication
-TODO: Implement onboarding completion and uploading to backend (ensure it matches shape of user const in onboarding flow)
---User Database: id, name, bday, mascot, color, preferences, chores(type and frequency), houshold id, timestamp joined
---Houshold Database: id, users, invite code
-
+TODO: Add availability checking to onboarding flow
 TODO: Call chore organizin/leaderboard algorithm in backend upon onboarding completion and implement function that will call algorithm again each week
+TODO: Ensure user logout actually clears cookies and prevents session restores (Anotida)
+TODO: Verify that users can login using google sign in and information is properly stored in firebase (Anotida)
+TODO: Verify that a user can create and join an existing household (Anotida)
 
 
 ## DashBoard

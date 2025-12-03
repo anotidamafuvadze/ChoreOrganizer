@@ -1,22 +1,52 @@
-import { useState } from 'react';
-import { Home, Users, ArrowRight } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
+import { useState } from "react";
+import { Home, Users, ArrowRight } from "lucide-react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 interface HouseholdStepProps {
-  onNext: (householdName: string) => void;
+  // onNext now accepts an optional inviteCode so parent can store it in onboarding state
+  onNext: (householdName: string, inviteCode?: string) => void;
 }
 
 export function HouseholdStep({ onNext }: HouseholdStepProps) {
-  const [mode, setMode] = useState<'create' | 'join' | null>(null);
-  const [householdName, setHouseholdName] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
+  const [mode, setMode] = useState<"create" | "join" | null>(null);
+  const [householdName, setHouseholdName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
 
-  const handleContinue = () => {
-    if (mode === 'create' && householdName) {
+  const handleContinue = async () => {
+    if (mode === "create" && householdName) {
+      // Explicitly call with no inviteCode for create flow
       onNext(householdName);
-    } else if (mode === 'join' && inviteCode) {
-      onNext('Unit 3B Roomies'); // Mock joined household
+    } else if (mode === "join" && inviteCode) {
+      try {
+        const code = inviteCode.trim();
+        const res = await fetch(
+          `/api/user/invite/${encodeURIComponent(code)}`,
+          {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+
+        // TODO: better display error messages in UI
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(
+            err?.error
+              ? `Invalid invite: ${err.error}`
+              : "Invite code not found"
+          );
+          return;
+        }
+
+        // Pass household summary and invite code to parent via onNext
+        const hh = await res.json();
+        onNext(hh.name || "Joined Household", code);
+      } catch (err) {
+        // TODO: better display error messages in UI
+        console.error("Error joining household:", err);
+        alert("Error joining household");
+      }
     }
   };
 
@@ -26,9 +56,7 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
         <div className="inline-flex items-center justify-center bg-gradient-to-br from-blue-200 to-purple-200 p-4 rounded-3xl shadow-lg mb-4">
           <Home className="w-12 h-12 text-purple-600" />
         </div>
-        <h2 className="text-purple-700 mb-2">
-          Set Up Your Household
-        </h2>
+        <h2 className="text-purple-700 mb-2">Set Up Your Household</h2>
         <p className="text-purple-500">
           Create a new household or join your roomies!
         </p>
@@ -37,7 +65,7 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
       {!mode && (
         <div className="grid grid-cols-2 gap-6">
           <button
-            onClick={() => setMode('create')}
+            onClick={() => setMode("create")}
             className="bg-gradient-to-br from-yellow-100 to-pink-100 hover:from-yellow-200 hover:to-pink-200 rounded-2xl p-8 border-2 border-purple-200 transition-all hover:shadow-lg hover:scale-105"
           >
             <div className="bg-white/80 p-4 rounded-2xl inline-flex mb-4">
@@ -50,7 +78,7 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
           </button>
 
           <button
-            onClick={() => setMode('join')}
+            onClick={() => setMode("join")}
             className="bg-gradient-to-br from-blue-100 to-purple-100 hover:from-blue-200 hover:to-purple-200 rounded-2xl p-8 border-2 border-purple-200 transition-all hover:shadow-lg hover:scale-105"
           >
             <div className="bg-white/80 p-4 rounded-2xl inline-flex mb-4">
@@ -64,12 +92,10 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
         </div>
       )}
 
-      {mode === 'create' && (
+      {mode === "create" && (
         <div className="space-y-6">
           <div>
-            <label className="text-purple-600 mb-2 block">
-              Household Name
-            </label>
+            <label className="text-purple-600 mb-2 block">Household Name</label>
             <Input
               value={householdName}
               onChange={(e) => setHouseholdName(e.target.value)}
@@ -83,7 +109,8 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
 
           <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-200">
             <p className="text-purple-600 text-sm">
-              💡 <span className="font-medium">Pro tip:</span> You'll get an invite code to share with your roommates after setup!
+              💡 <span className="font-medium">Pro tip:</span> You'll get an
+              invite code to share with your roommates after setup!
             </p>
           </div>
 
@@ -105,12 +132,10 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
         </div>
       )}
 
-      {mode === 'join' && (
+      {mode === "join" && (
         <div className="space-y-6">
           <div>
-            <label className="text-purple-600 mb-2 block">
-              Invite Code
-            </label>
+            <label className="text-purple-600 mb-2 block">Invite Code</label>
             <Input
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value)}

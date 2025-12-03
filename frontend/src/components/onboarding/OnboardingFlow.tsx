@@ -1,53 +1,96 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { User } from '../../App';
-import { WelcomeStep } from './WelcomeStep';
-import { HouseholdStep } from './HouseholdStep';
-import { ChoresStep } from './ChoresStep';
-import { PreferencesStep } from './PreferencesStep';
-import { MascotStep } from './MascotStep';
-import { ConfirmationStep } from './ConfirmationStep';
+import { useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { User } from "../../App";
+import { WelcomeStep } from "./WelcomeStep";
+import { HouseholdStep } from "./HouseholdStep";
+import { ChoresStep } from "./ChoresStep";
+import { PreferencesStep } from "./PreferencesStep";
+import { MascotStep } from "./MascotStep";
+import { ConfirmationStep } from "./ConfirmationStep";
+import { AuthenticationStep } from "./AuthenticationStep";
 
 interface OnboardingFlowProps {
-  onComplete: (user: User, household: string) => void;
+  onComplete: (
+    user: User,
+    household: string,
+    chores: { name: string; frequency: string }[]
+  ) => void;
 }
 
 export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [step, setStep] = useState(0);
-  const [householdName, setHouseholdName] = useState('');
-  const [selectedChores, setSelectedChores] = useState<{ name: string; frequency: string; }[]>([]);
-  const [preferences, setPreferences] = useState<Record<string, 'love' | 'neutral' | 'avoid'>>({});
+  const [householdName, setHouseholdName] = useState("");
+  const [selectedChores, setSelectedChores] = useState<
+    { name: string; frequency: string }[]
+  >([]);
+  const [preferences, setPreferences] = useState<
+    Record<string, "love" | "neutral" | "avoid">
+  >({});
   const [selectedMascot, setSelectedMascot] = useState<any>(null);
+  const [authData, setAuthData] = useState<any>(null);
 
-  // TODO: Add steps that asks for availability and user name / birthday (no chores on birthday ??)
   const steps = [
     <WelcomeStep key="welcome" onNext={() => setStep(1)} />,
-    <HouseholdStep key="household" onNext={(name) => { setHouseholdName(name); setStep(2); }} />,
-    <ChoresStep key="chores" onNext={(chores) => { setSelectedChores(chores); setStep(3); }} />,
-    <PreferencesStep 
-      key="preferences" 
-      chores={selectedChores.map((c) => c.name)}
-      onNext={(prefs) => { setPreferences(prefs); setStep(4); }} 
+    <HouseholdStep
+      key="household"
+      onNext={(name) => {
+        setHouseholdName(name);
+        setStep(2);
+      }}
     />,
-     // TODO: <AvailabilityStep key="availability" onNext={() => setStep(5)} />,
-    
-    <MascotStep key="mascot" onNext={(mascot) => { setSelectedMascot(mascot); setStep(5); }} />,
-    // TODO: <UserInfoStep key="userinfo" onNext={() => setStep(6)} />,
-    // TODO: <InviteCodeStep key="invite" onNext={() => setStep(7)} />,
-    <ConfirmationStep 
-      key="confirmation" 
+    <ChoresStep
+      key="chores"
+      onNext={(chores) => {
+        setSelectedChores(chores);
+        setStep(3);
+      }}
+    />,
+    <PreferencesStep
+      key="preferences"
+      chores={selectedChores.map((c) => c.name)}
+      onNext={(prefs) => {
+        setPreferences(prefs);
+        setStep(4);
+      }}
+    />,
+    <MascotStep
+      key="mascot"
+      onNext={(mascot) => {
+        setSelectedMascot(mascot);
+        setStep(5);
+      }}
+    />,
+    <AuthenticationStep
+      key="auth"
+      onNext={(data) => {
+        setAuthData(data);
+        setStep(6);
+      }}
+    />,
+    <ConfirmationStep
+      key="confirmation"
       household={householdName}
       mascot={selectedMascot}
       onComplete={() => {
-        // TODO: Handle real user creation and onboarding completion (user ID should be random UUID and backend matched)
+        const generatedId =
+          (authData && authData.method === "google" && authData.fbUser?.uid) ||
+          `u-${Date.now()}`;
+
         const user: User = {
-          id: '1',
-          name: 'You',
-          mascot: selectedMascot.type,
-          color: selectedMascot.color,
+          id: generatedId as string,
+          name:
+            (authData && (authData.name || authData.fbUser?.displayName)) ||
+            "You",
+          pronouns: (authData && authData.pronouns) || "they/them",
+          bday: (authData && authData.bday) || null,
+          mascot: selectedMascot?.type || selectedMascot || "cat",
+          color: selectedMascot?.color || "#FFB6C1",
           preferences: preferences,
-        };
-        onComplete(user, householdName);
+          email: authData?.email,
+          password: authData?.password,
+        } as User;
+
+        onComplete(user, householdName, selectedChores);
       }}
     />,
   ];
@@ -73,11 +116,11 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           <div
             key={index}
             className={`h-2 rounded-full transition-all ${
-              index === step 
-                ? 'w-8 bg-purple-400' 
-                : index < step 
-                ? 'w-2 bg-purple-300' 
-                : 'w-2 bg-purple-200'
+              index === step
+                ? "w-8 bg-purple-400"
+                : index < step
+                ? "w-2 bg-purple-300"
+                : "w-2 bg-purple-200"
             }`}
           />
         ))}
