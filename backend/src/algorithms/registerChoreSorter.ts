@@ -6,6 +6,7 @@ app.use(express.json());
 import {
     fetchHouseholdFromFirestore,
     fetchUserByUid,
+    assignUserstoChores
 } from "../users/firebaseHelpers";
 
 type Household = { id: number, name: string, users: User[], chores: Chore[] }
@@ -263,7 +264,7 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
 }
 
 app.post("/assign-chores", (req: Request, res: Response) => {
-    const { household, householdId, week } = req.body;
+    const { household, householdId } = req.body;
 
     try {
         // If caller sent only householdId, fetch household from Firestore
@@ -292,7 +293,7 @@ app.post("/assign-chores", (req: Request, res: Response) => {
                 const graph = buildFlowGraph(hh);
 
                 // Compute min cost max flow
-                const result = minCostMaxFlow(graph);
+                const result = assignUserstoChores(minCostMaxFlow(graph).assignments, householdId);
 
                 res.json({
                     success: true,
