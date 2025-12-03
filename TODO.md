@@ -3,6 +3,11 @@ TODO: Implement chore organizing algorithm (Madison)
 TODO: Implement leaderboard algorithm (Madsion)
 TODO: Implement fairness calculation algorithm (Madison)
 
+Notes:
+- Person who created household pushes "start button" after initial roomates have joined household 
+- If a new user joins past the start date then they have to wait the following week to get their chores 
+- Algorithm called once each week
+
 ## App and Onboarding (Anotida)
 
 TODO: Add availability checking to onboarding flow (Anotida)
@@ -12,17 +17,14 @@ TODO: Verify that users can login using google sign in and information is proper
 TODO: Verify that a user can create and join an existing household (Anotida)
 - adjust the api/user/invite/:code endpoint so that all it does is ensure that when a user is finished onboarding they are added to the proper household
 TODO: Adjust api/user/me enddpoint so that all this does is check if a user already exists (Anotida)
-
-Notes:
-- Person who created household pushes "start button"
-- If a new user joins past the start date then they have to wait the following week to get their chores 
-- Algorithm called once each week
+TODO: Get rid of continue with google on login page and replace with only sign in with google. Authentication screen should only ask about name and email and then users can add their pronouns and birthday in the settings screen
 
 
 ## DashBoard
 - Chore List
 TODO: Replace the mock chores in ChoresList component with real chores fetching from backend and update user points accordingly when completed (noor)
 TODO: Dynamically adjust styling of chore component when it is overdue (noor)
+TODO: Have checking off chore in frontend update chore information in backend household collection (completed field should now say completed)
 
 - Fairness Meter
 TODO: Replace mock roomate data with real roomate data fetched from backend (Madison)
@@ -50,9 +52,13 @@ TODO: Replace the chore list with real data fetching from backend on the ChoresS
 TODO: Replace the preference stats with real data fetching from backend on the ChoresScreen and implement preference update function
 TODO: Implement edit/add chore functionality on ChoresScreen
 
-
 ## Leaderboard Screen (Madison)
 TODO: Replace mock leaderboard data with real leaderboard data fetched from backend
+
+## Setting Screen (Anotida)
+TODO: Allow user to change add their pronouns and birthday in profile and then update to the backend (Anotida)
+TODO: Replace mock invite code and roomate data with real data
+TODO: Implement notifications
 
 
 
