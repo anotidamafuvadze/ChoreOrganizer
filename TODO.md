@@ -14,8 +14,8 @@ TODO: Verify that a user can create and join an existing household (Anotida)
 
 ## DashBoard
 - Chore List
-TODO: Replace the mock chores in ChoresList component with real chores fetching from backend and update user points accordingly when completed
-TODO: Dynamically adjust styling of chore component when it is overdue
+TODO: Replace the mock chores in ChoresList component with real chores fetching from backend and update user points accordingly when completed (noor)
+TODO: Dynamically adjust styling of chore component when it is overdue (noor)
 
 - Fairness Meter
 TODO: Replace mock roomate data with real roomate data fetched from backend
@@ -23,7 +23,7 @@ TODO: Replace mock fairness calculation with real data fetched from backend (alg
 TODO: Make messages dynamic based on user and fairness scores
 
 - Greeting Row
-TODO: Replace mock roomate data with real roomate data fetched from backend
+TODO: Replace mock roomate data with real roomate data fetched from backend (noor)
 TODO: Replace mock user points with real user points fetched from backend
 
 -Leaderboard Preview
