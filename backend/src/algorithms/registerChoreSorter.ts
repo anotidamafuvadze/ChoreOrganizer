@@ -263,52 +263,41 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
     return { flow, cost, assignments: nameAssignments };
 }
 
-app.post("/assign-chores", (req: Request, res: Response) => {
+app.post("/assign-chores", async (req: Request, res: Response) => {
     const { household, householdId } = req.body;
-
     try {
-        // If caller sent only householdId, fetch household from Firestore
+        // Resolve household object (either passed in or fetch by id)
         let hh = household;
         if (!hh && householdId) {
-            // fetch async inside try/catch by wrapping the handler body in an async IIFE
+            const fetched = await fetchHouseholdFromFirestore(String(householdId));
+            if (!fetched) {
+                return res.status(404).json({ success: false, error: "Household not found" });
+            }
+            hh = fetched;
         }
 
-        (async () => {
-            try {
-                if (!hh && householdId) {
-                    const fetched = await fetchHouseholdFromFirestore(String(householdId));
-                    if (!fetched) {
-                        res.status(404).json({ success: false, error: "Household not found" });
-                        return;
-                    }
-                    hh = fetched;
-                }
+        if (!hh) {
+            return res.status(400).json({ success: false, error: "missing household or householdId" });
+        }
 
-                if (!hh) {
-                    res.status(400).json({ success: false, error: "missing household or householdId" });
-                    return;
-                }
+        // Build flow network and compute assignment
+        const graph = buildFlowGraph(hh);
+        const flowResult = minCostMaxFlow(graph);
 
-                // Build flow network
-                const graph = buildFlowGraph(hh);
+        // Determine a reliable household id to pass to the assignment writer
+        const resolvedHouseholdId =
+            (typeof hh === "object" && hh.id !== undefined) ? String(hh.id) : String(householdId || hh);
 
-                // Compute min cost max flow
-                const result = assignUserstoChores(minCostMaxFlow(graph).assignments, householdId);
+        // Persist assignments (await the Promise)
+        const assignmentResult = await assignUserstoChores(flowResult.assignments, resolvedHouseholdId);
 
-                res.json({
-                    success: true,
-                    flowResult: result
-                });
-            } catch (err: any) {
-                res.status(500).json({ success: false, error: err.message });
-            }
-        })();
-
-    } catch (err: any) {
-        res.status(500).json({
-            success: false,
-            error: err.message
+        return res.json({
+            success: true,
+            flowResult,
+            assignmentResult
         });
+    } catch (err: any) {
+        return res.status(500).json({ success: false, error: err.message });
     }
 });
 

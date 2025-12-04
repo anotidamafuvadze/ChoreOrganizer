@@ -229,6 +229,7 @@ export async function registerUsersHandler(app: Express) {
       const email = String(clientUser.email).toLowerCase();
 
       if (inviteCode) {
+        if (!firestore) throw new Error("Firestore not initialized") 
         const q = await firestore
           .collection("households")
           .where("inviteCode", "==", inviteCode)
@@ -307,6 +308,7 @@ export async function registerUsersHandler(app: Express) {
 
       // Create new household
       const householdName = req.body?.householdName || clientUser.householdName;
+      if (!firestore) throw new Error("Firestore not initialized") 
       const existing = await firestore
         .collection("users")
         .where("email", "==", email)
@@ -396,6 +398,7 @@ export async function registerUsersHandler(app: Express) {
       }
 
       const { email, password, authProvider } = validated;
+      if (!firestore) throw new Error("Firestore not initialized") 
       const q = await firestore
         .collection("users")
         .where("email", "==", email)
@@ -587,6 +590,7 @@ export async function registerUsersHandler(app: Express) {
       let inviteCode = inviteCodeInput;
       if (dbUser && dbUser.householdId) {
         try {
+          if (!firestore) throw new Error("Firestore not initialized") 
           const hhSnap = await firestore.collection("households").doc(String(dbUser.householdId)).get();
           if (hhSnap.exists) {
             const hhData = hhSnap.data() || {};
@@ -635,6 +639,7 @@ export async function registerUsersHandler(app: Express) {
 
       if (user && user.householdId) {
         householdId = String(user.householdId);
+        if (!firestore) throw new Error("Firestore not initialized") 
         const hhSnap = await firestore.collection("households").doc(householdId).get();
         if (hhSnap.exists) {
           const hhData = hhSnap.data() || {};
