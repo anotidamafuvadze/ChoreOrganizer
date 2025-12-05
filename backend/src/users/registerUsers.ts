@@ -13,7 +13,7 @@ function validateCreateUserRequest(body: any) {
   if (!firestore) {
     return { ok: false, error: "Firestore not initialized" };
   }
-  
+
   const clientUser = body?.user || {};
   const householdName = body?.householdName || clientUser.householdName;
 
@@ -35,7 +35,11 @@ function validateCreateUserRequest(body: any) {
   if (!householdName) {
     return { ok: false, error: "Missing household name" };
   }
-  if (!clientUser.chores || !Array.isArray(clientUser.chores) || clientUser.chores.length === 0) {
+  if (
+    !clientUser.chores ||
+    !Array.isArray(clientUser.chores) ||
+    clientUser.chores.length === 0
+  ) {
     return { ok: false, error: "Must provide non-empty chores array" };
   }
 
@@ -59,7 +63,7 @@ export function validateLoginRequest(body: any) {
   if (!email) {
     return { ok: false, error: "Missing email" };
   }
-  
+
   if (!authProvider && !password) {
     return { ok: false, error: "Missing password for email login" };
   }
@@ -159,9 +163,11 @@ export async function registerUsersHandler(app: Express) {
   // Get user by email
   app.get("/api/user/me", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
-    
+
     try {
-      const email = String(req.query.email || "").trim().toLowerCase();
+      const email = String(req.query.email || "")
+        .trim()
+        .toLowerCase();
       if (!email) {
         return res.status(400).json({ error: "Missing email" });
       }
@@ -222,14 +228,16 @@ export async function registerUsersHandler(app: Express) {
       if (!validation.ok) {
         return res.status(400).json({ error: validation.error });
       }
-      
-      const inviteCode = req.body?.inviteCode ? String(req.body.inviteCode).trim() : null;
+
+      const inviteCode = req.body?.inviteCode
+        ? String(req.body.inviteCode).trim()
+        : null;
       const clientUser = req.body?.user || {};
       const userId = String(clientUser.id || req.body.userId || "").trim();
       const email = String(clientUser.email).toLowerCase();
 
       if (inviteCode) {
-        if (!firestore) throw new Error("Firestore not initialized") 
+        if (!firestore) throw new Error("Firestore not initialized");
         const q = await firestore
           .collection("households")
           .where("inviteCode", "==", inviteCode)
@@ -278,20 +286,29 @@ export async function registerUsersHandler(app: Express) {
         }
 
         // Add user to household
-        let users: string[] = Array.isArray(hhData.users) ? hhData.users.map(String) : [];
+        let users: string[] = Array.isArray(hhData.users)
+          ? hhData.users.map(String)
+          : [];
         if (!users.includes(userId)) {
           users.push(userId);
           try {
             await hhRef.update({ users });
           } catch (error) {
-            return res.status(500).json({ error: "Failed to add user to household" });
+            return res
+              .status(500)
+              .json({ error: "Failed to add user to household" });
           }
         }
 
         try {
-          await userRef.set({ householdName: hhData.name || null }, { merge: true });
+          await userRef.set(
+            { householdName: hhData.name || null },
+            { merge: true }
+          );
         } catch (error) {
-          return res.status(500).json({ error: "Failed to update user household info" });
+          return res
+            .status(500)
+            .json({ error: "Failed to update user household info" });
         }
 
         const finalUserSnap = await userRef.get();
@@ -308,7 +325,7 @@ export async function registerUsersHandler(app: Express) {
 
       // Create new household
       const householdName = req.body?.householdName || clientUser.householdName;
-      if (!firestore) throw new Error("Firestore not initialized") 
+      if (!firestore) throw new Error("Firestore not initialized");
       const existing = await firestore
         .collection("users")
         .where("email", "==", email)
@@ -366,7 +383,9 @@ export async function registerUsersHandler(app: Express) {
       try {
         await userRef.set({ householdId, householdName }, { merge: true });
       } catch (error) {
-        return res.status(500).json({ error: "Failed to update user household" });
+        return res
+          .status(500)
+          .json({ error: "Failed to update user household" });
       }
 
       const finalUserSnap = await userRef.get();
@@ -379,7 +398,6 @@ export async function registerUsersHandler(app: Express) {
         householdName,
         user: finalUser,
       });
-
     } catch (error) {
       return res.status(500).json({
         error: "Internal server error",
@@ -390,7 +408,7 @@ export async function registerUsersHandler(app: Express) {
   // Login user
   app.post("/api/user/login", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
-    
+
     try {
       const validated = validateLoginRequest(req.body);
       if (!validated.ok) {
@@ -398,7 +416,7 @@ export async function registerUsersHandler(app: Express) {
       }
 
       const { email, password, authProvider } = validated;
-      if (!firestore) throw new Error("Firestore not initialized") 
+      if (!firestore) throw new Error("Firestore not initialized");
       const q = await firestore
         .collection("users")
         .where("email", "==", email)
@@ -440,7 +458,6 @@ export async function registerUsersHandler(app: Express) {
         householdId,
         householdName,
       });
-
     } catch (error) {
       return res.status(500).json({
         error: "Internal server error",
@@ -494,7 +511,12 @@ export async function registerUsersHandler(app: Express) {
     }
   });
 
-  function setSessionCookies(res: Response, user: any, householdName?: string | null, inviteCode?: string | null) {
+  function setSessionCookies(
+    res: Response,
+    user: any,
+    householdName?: string | null,
+    inviteCode?: string | null
+  ) {
     try {
       const cookieOpts = {
         httpOnly: true,
@@ -550,16 +572,22 @@ export async function registerUsersHandler(app: Express) {
   async function fetchUserFromDb(candidate: any): Promise<any | null> {
     try {
       if (!firestore) return null;
-      
+
       const id = candidate?.id || candidate?.userId || null;
       if (id) {
         const snap = await firestore.collection("users").doc(String(id)).get();
         if (snap.exists) return { id: snap.id, ...snap.data() };
       }
-      
-      const email = candidate?.email ? String(candidate.email).toLowerCase() : null;
+
+      const email = candidate?.email
+        ? String(candidate.email).toLowerCase()
+        : null;
       if (email) {
-        const q = await firestore.collection("users").where("email", "==", email).limit(1).get();
+        const q = await firestore
+          .collection("users")
+          .where("email", "==", email)
+          .limit(1)
+          .get();
         if (!q.empty) {
           const doc = q.docs[0];
           return { id: doc.id, ...doc.data() };
@@ -590,8 +618,11 @@ export async function registerUsersHandler(app: Express) {
       let inviteCode = inviteCodeInput;
       if (dbUser && dbUser.householdId) {
         try {
-          if (!firestore) throw new Error("Firestore not initialized") 
-          const hhSnap = await firestore.collection("households").doc(String(dbUser.householdId)).get();
+          if (!firestore) throw new Error("Firestore not initialized");
+          const hhSnap = await firestore
+            .collection("households")
+            .doc(String(dbUser.householdId))
+            .get();
           if (hhSnap.exists) {
             const hhData = hhSnap.data() || {};
             householdName = hhData.name ?? householdName;
@@ -603,7 +634,12 @@ export async function registerUsersHandler(app: Express) {
       }
 
       setSessionCookies(res, userToStore, householdName, inviteCode);
-      return res.json({ success: true, user: userToStore, householdName, inviteCode });
+      return res.json({
+        success: true,
+        user: userToStore,
+        householdName,
+        inviteCode,
+      });
     } catch (error) {
       return res.status(500).json({
         error: "Failed to set session",
@@ -614,7 +650,7 @@ export async function registerUsersHandler(app: Express) {
   // Get session
   app.get("/api/session", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
-    
+
     try {
       const rawUserCookie = readCookie(req, "chore_user");
       if (!rawUserCookie) {
@@ -639,8 +675,11 @@ export async function registerUsersHandler(app: Express) {
 
       if (user && user.householdId) {
         householdId = String(user.householdId);
-        if (!firestore) throw new Error("Firestore not initialized") 
-        const hhSnap = await firestore.collection("households").doc(householdId).get();
+        if (!firestore) throw new Error("Firestore not initialized");
+        const hhSnap = await firestore
+          .collection("households")
+          .doc(householdId)
+          .get();
         if (hhSnap.exists) {
           const hhData = hhSnap.data() || {};
           inviteCode = hhData.inviteCode || null;

@@ -86,7 +86,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    // TODO: Ensure logged out users don't trigger session restore  
+    // TODO: Ensure logged out users don't trigger session restore
     // const params = new URLSearchParams(window.location.search);
     // if (params.get("logged_out")) {
     //   const clean = window.location.pathname + window.location.hash;
