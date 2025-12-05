@@ -15,9 +15,13 @@ interface AuthenticationStepProps {
     password?: string | null;
     fbUser?: any;
   }) => void;
+  onBack?: () => void;
 }
 
-export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
+export function AuthenticationStep({
+  onNext,
+  onBack,
+}: AuthenticationStepProps) {
   const [name, setName] = useState("");
   const [pronouns, setPronouns] = useState("");
   const [bday, setBday] = useState("");
@@ -31,7 +35,6 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
 
   const validateEmail = (email: string) => /\S+@\S+\.\S+/.test(email);
 
-  // TODO: Check why this function is returning 404 error
   const checkEmailExists = async (
     email: string
   ): Promise<{ exists: boolean; data?: any }> => {
@@ -67,8 +70,6 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
   // compute whether buttons should be enabled (kept for validation UI only)
   const canSubmitEmail =
     name.trim().length > 0 &&
-    pronouns.trim().length > 0 &&
-    bday.trim().length > 0 &&
     validateEmail(email.trim()) &&
     password.length >= 6;
 
@@ -214,7 +215,7 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Full name"
+          placeholder="Full name *"
           className={
             "bg-white border-purple-200 rounded-xl " +
             (emailTried && !name.trim()
@@ -231,42 +232,28 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
         <Input
           value={pronouns}
           onChange={(e) => setPronouns(e.target.value)}
-          placeholder="Pronouns (e.g. they/them)"
-          className={
-            "bg-white border-purple-200 rounded-xl " +
-            (emailTried && !pronouns.trim()
-              ? "border-red-500 ring-1 ring-red-200"
-              : "")
-          }
+          placeholder="Pronouns (optional)"
+          className={"bg-white border-purple-200 rounded-xl"}
         />
-        {emailTried && !pronouns.trim() && (
-          <p className="text-xs text-red-600 mt-0.1 mb-0.1">
-            Please enter your pronouns.
-          </p>
-        )}
+        {/* pronouns are optional now - removed required error */}
 
         <Input
           type="date"
           value={bday}
           onChange={(e) => setBday(e.target.value)}
-          placeholder="Birthday"
-          className={
-            "bg-white border-purple-200 rounded-xl " +
-            (emailTried && !bday.trim()
-              ? "border-red-500 ring-1 ring-red-200"
-              : "")
-          }
+          placeholder="Birthdate (optional) — MM/DD/YYYY"
+          aria-label="Birthdate (MM/DD/YYYY)"
+          className={"bg-white border-purple-200 rounded-xl"}
         />
-        {emailTried && !bday.trim() && (
-          <p className="text-xs text-red-600 mt-0.1 mb-0.1">
-            Please provide your birthday.
-          </p>
-        )}
+        <p className="text-xs text-gray-500 mt-0.1 mb-0.1">
+          Birthdate (optional)
+        </p>
+        {/* birthday is optional now - removed required error */}
 
         <Input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email address"
+          placeholder="Email address *"
           className={
             "bg-white border-purple-200 rounded-xl " +
             (emailTried && !validateEmail(email)
@@ -283,7 +270,7 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
         <Input
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Create a password"
+          placeholder="Create a password *"
           type="password"
           className={
             "bg-white border-purple-200 rounded-xl " +
@@ -306,6 +293,12 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
       )}
 
       <div className="flex gap-3 mb-4">
+        <Button
+          onClick={onBack}
+          className="flex-1 bg-white hover:bg-purple-50 text-purple-600 border-2 border-purple-200 rounded-2xl py-3"
+        >
+          Back
+        </Button>
         <Button
           onClick={submitEmailSignup}
           disabled={loading}

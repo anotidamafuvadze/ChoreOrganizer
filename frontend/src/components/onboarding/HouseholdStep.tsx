@@ -6,9 +6,10 @@ import { Input } from "../ui/input";
 interface HouseholdStepProps {
   // onNext now accepts an optional inviteCode so parent can store it in onboarding state
   onNext: (householdName: string, inviteCode?: string) => void;
+  onBack?: () => void;
 }
 
-export function HouseholdStep({ onNext }: HouseholdStepProps) {
+export function HouseholdStep({ onNext, onBack }: HouseholdStepProps) {
   const [mode, setMode] = useState<"create" | "join" | null>(null);
   const [householdName, setHouseholdName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -116,7 +117,7 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
 
           <div className="flex gap-3">
             <Button
-              onClick={() => setMode(null)}
+              onClick={onBack ? onBack : () => setMode(null)}
               className="flex-1 bg-white hover:bg-purple-50 text-purple-600 border-2 border-purple-200 rounded-2xl py-6"
             >
               Back
@@ -150,7 +151,7 @@ export function HouseholdStep({ onNext }: HouseholdStepProps) {
 
           <div className="flex gap-3">
             <Button
-              onClick={() => setMode(null)}
+              onClick={onBack ? onBack : () => setMode(null)}
               className="flex-1 bg-white hover:bg-purple-50 text-purple-600 border-2 border-purple-200 rounded-2xl py-6"
             >
               Back

@@ -29,6 +29,8 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [selectedMascot, setSelectedMascot] = useState<any>(null);
   const [authData, setAuthData] = useState<any>(null);
 
+  const handleBack = () => setStep((prev) => Math.max(0, prev - 1));
+
   const steps = [
     <WelcomeStep key="welcome" onNext={() => setStep(1)} />,
     <HouseholdStep
@@ -37,6 +39,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         setHouseholdName(name);
         setStep(2);
       }}
+      onBack={handleBack}
     />,
     <ChoresStep
       key="chores"
@@ -44,6 +47,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         setSelectedChores(chores);
         setStep(3);
       }}
+      onBack={handleBack}
     />,
     <PreferencesStep
       key="preferences"
@@ -52,6 +56,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         setPreferences(prefs);
         setStep(4);
       }}
+      onBack={handleBack}
     />,
     <MascotStep
       key="mascot"
@@ -59,6 +64,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         setSelectedMascot(mascot);
         setStep(5);
       }}
+      onBack={handleBack}
     />,
     <AuthenticationStep
       key="auth"
@@ -66,6 +72,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         setAuthData(data);
         setStep(6);
       }}
+      onBack={handleBack}
     />,
     <ConfirmationStep
       key="confirmation"
@@ -92,6 +99,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
         onComplete(user, householdName, selectedChores);
       }}
+      onBack={handleBack}
     />,
   ];
 

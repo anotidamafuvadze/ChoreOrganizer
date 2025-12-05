@@ -13,7 +13,7 @@ Notes:
 TODO: Add availability checking to onboarding flow (Anotida)
 TODO: Call chore organizin/leaderboard algorithm in backend upon onboarding completion and implement function that will call algorithm again each week (Anotida)
 !! TODO: Ensure user logout actually clears cookies and prevents session restores (Anotida)
-TODO: Verify that users can login using google sign in and information is properly stored in firebase (Anotida)
+
 TODO: Verify that a user can create and join an existing household (Anotida)
 - adjust the api/user/invite/:code endpoint so that all it does is ensure that when a user is finished onboarding they are added to the proper household
 TODO: Adjust api/user/me enddpoint so that all this does is check if a user already exists (Anotida)

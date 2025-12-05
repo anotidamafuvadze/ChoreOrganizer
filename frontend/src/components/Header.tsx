@@ -1,4 +1,4 @@
-import { Sparkles, LogOut } from "lucide-react";
+import { Sparkles, LogOut, Copy, Check } from "lucide-react";
 import React, { useState } from "react";
 
 interface HeaderProps {
@@ -9,6 +9,7 @@ interface HeaderProps {
 
 export function Header({ household, inviteCode, onLogout }: HeaderProps) {
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // TODO: Implement real week calculation based on current date and household start date
   const getCurrentWeek = () => {
@@ -18,6 +19,18 @@ export function Header({ household, inviteCode, onLogout }: HeaderProps) {
     const oneWeek = 1000 * 60 * 60 * 24 * 7;
     const week = Math.floor(diff / oneWeek);
     return `Week ${week}`;
+  };
+
+  const copyToClipboard = async () => {
+    if (!inviteCode) return;
+
+    try {
+      await navigator.clipboard.writeText(inviteCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      setError("Failed to copy invite code");
+    }
   };
 
   return (
@@ -58,8 +71,24 @@ export function Header({ household, inviteCode, onLogout }: HeaderProps) {
             <div className="text-xs uppercase tracking-wide text-gray-600">
               Invite Code
             </div>
-            <div className="mt-1 inline-flex items-center justify-center px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-pink-500 text-white font-mono font-semibold text-sm shadow-md">
-              {inviteCode}
+            <div className="mt-1 flex items-center gap-2">
+              <button
+                onClick={copyToClipboard}
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-pink-500 text-white font-mono font-semibold text-sm shadow-md hover:shadow-lg hover:from-purple-700 hover:to-pink-600 transition-all cursor-pointer"
+                title="Click to copy invite code"
+              >
+                {inviteCode}
+                {copied ? (
+                  <Check className="w-4 h-4" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
+              </button>
+              {copied && (
+                <span className="text-green-600 text-xs font-medium animate-fade-in">
+                  Copied!
+                </span>
+              )}
             </div>
           </div>
         )}
