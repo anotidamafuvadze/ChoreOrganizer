@@ -1,6 +1,6 @@
 import { Scale, TrendingUp } from 'lucide-react';
 import { MascotIllustration } from '../mascots/MascotIllustration';
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 
 // TODO: Replace with real roommates data fetching from backend
 const roommatesData = [
@@ -11,51 +11,34 @@ const roommatesData = [
 ];
 
 export function FairnessMeter() {
-  // NOTE: replace sampleChores with a real fetch from your backend returning
-  // chores: { id, name, points, assignedToName | assignedToId, ... }
-  const sampleChores = [
-    { id: "chore_1", name: "Take Out Trash", points: 3, assignedTo: "You" },
-    { id: "chore_2", name: "Wash Dishes", points: 5, assignedTo: "Alex" },
-    { id: "chore_3", name: "Sweep Living Room", points: 4, assignedTo: "Jamie" },
-    { id: "chore_4", name: "Clean Kitchen", points: 6, assignedTo: "You" },
-    // add more or replace with real data
-  ];
+  const [perUser, setPerUser] = useState<{ id: string; name: string; score: number }[]>(() =>
+    roommatesData.map((r) => ({ id: r.name, name: r.name, score: r.points || 0 }))
+  );
+  const [totalPoints, setTotalPoints] = useState<number>(() =>
+    roommatesData.reduce((s, r) => s + (r.points || 0), 0)
+  );
+  const [fairnessScore, setFairnessScore] = useState<number>(() => 92);
 
-  // Aggregate points per user (name-based). If your chores use user IDs, map IDs -> names first.
-  const { perUser, totalPoints, fairnessScore } = useMemo(() => {
-    const scores = new Map<string, number>();
-    // initialize with roommates (ensures every roommate appears even if zero)
-    for (const r of roommatesData) scores.set(r.name, 0);
-
-    for (const c of sampleChores) {
-      const assignee = c.assignedTo ?? "";
-      const pts = typeof c.points === "number" ? c.points : 0;
-      if (!assignee) continue;
-      scores.set(assignee, (scores.get(assignee) || 0) + pts);
-    }
-
-    const entries = Array.from(scores.entries()).map(([name, score]) => ({ name, score }));
-    const total = entries.reduce((s, e) => s + e.score, 0);
-
-    // Gini coefficient (0..1), then map to fairness = (1 - gini) * 100
-    function gini(values: number[]) {
-      const n = values.length;
-      if (n === 0) return 0;
-      const sorted = values.slice().sort((a, b) => a - b);
-      const sum = sorted.reduce((s, v) => s + v, 0);
-      if (sum === 0) return 0;
-      let accum = 0;
-      for (let i = 0; i < n; i++) accum += (i + 1) * sorted[i];
-      const g = (2 * accum) / (n * sum) - (n + 1) / n;
-      return Math.max(0, Math.min(1, g));
-    }
-
-    const values = entries.map((e) => e.score);
-    const g = gini(values);
-    const fairness = Math.round(Math.max(0, Math.min(100, (1 - g) * 100)));
-
-    return { perUser: entries, totalPoints: total, fairnessScore: fairness };
-  }, [sampleChores]);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/household/fairness", { credentials: "include" });
+        if (!mounted || !res.ok) return;
+        const data = await res.json();
+        if (!data) return;
+        // perUser returned as [{id,name,score}], totalPoints, fairness
+        if (Array.isArray(data.perUser) && mounted) {
+          setPerUser(data.perUser.map((p: any) => ({ id: String(p.id), name: String(p.name), score: Number(p.score || 0) })));
+          setTotalPoints(Number(data.totalPoints || 0));
+          setFairnessScore(Number(data.fairness ?? 0));
+        }
+      } catch {
+        // keep fallback/mock data when fetch fails
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   // Render: derive percentages using computed perUser + totalPoints
   return (
@@ -98,13 +81,13 @@ export function FairnessMeter() {
       <div>
         <p className="text-purple-600 text-sm mb-3">This Week's Distribution</p>
         <div className="space-y-3">
-          {perUser.map((p, index) => {
+          {perUser.map((p) => {
             const room = roommatesData.find((r) => r.name === p.name);
             const color = room?.color ?? "#C4C4C4";
             const points = p.score;
             const pct = totalPoints > 0 ? Math.round((points / totalPoints) * 100) : 0;
             return (
-              <div key={p.name}>
+              <div key={p.id}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <MascotIllustration

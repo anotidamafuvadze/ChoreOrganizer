@@ -713,7 +713,7 @@ export async function registerUsers(app: Express) {
     }
   });
 
- 
+
   function setSessionCookies(
     res: Response,
     user: any,
@@ -824,9 +824,9 @@ export async function registerUsers(app: Express) {
         try {
           const hhSnap = firestore
             ? await firestore
-                .collection("households")
-                .doc(String(dbUser.householdId))
-                .get()
+              .collection("households")
+              .doc(String(dbUser.householdId))
+              .get()
             : ({ exists: false } as any);
           if (hhSnap.exists) {
             const hhData = hhSnap.data() || {};
@@ -936,5 +936,127 @@ export async function registerUsers(app: Express) {
       });
     }
   });
+
+/**
+ * BEGINNNING OF ENDPOINT THAT MIGHT BE DELETED
+ */
+  // GET household fairness (aggregates chore.points by assignee and returns per-user scores + fairness)
+  app.get("/api/household/fairness", async (req: Request, res: Response) => {
+    if (!(await initCollectionsIfNeeded(res))) return;
+    try {
+      const qId = String(req.query.id || "").trim();
+      const qName = String(req.query.name || "").trim();
+
+      // Resolve household document
+      let hhSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+      if (qId) {
+        hhSnap = await firestore!.collection("households").doc(qId).get();
+      } else if (qName) {
+        const qq = await firestore!.collection("households").where("name", "==", qName).limit(1).get();
+        if (!qq.empty) hhSnap = qq.docs[0];
+      } else {
+        // Try to resolve household from session cookie (chore_user) or fallback to cookie values
+        try {
+          const raw = readCookie(req, "chore_user");
+          if (raw) {
+            const decoded = decodeURIComponent(String(raw));
+            const cookieUser = JSON.parse(decoded);
+            // cookieUser may contain householdId
+            const hid = cookieUser?.householdId ?? cookieUser?.household?.id ?? null;
+            if (hid) {
+              hhSnap = await firestore!.collection("households").doc(String(hid)).get();
+            } else {
+              // try resolving user's household id from users collection
+              const dbUser = await fetchUserFromDb(cookieUser);
+              if (dbUser && dbUser.householdId) {
+                hhSnap = await firestore!.collection("households").doc(String(dbUser.householdId)).get();
+              }
+            }
+          }
+        } catch (e) {
+          // ignore - we'll error below if still not found
+        }
+      }
+
+      if (!hhSnap || !hhSnap.exists) {
+        return res.status(404).json({ error: "Household not found" });
+      }
+
+      const hhData: any = hhSnap.data() || {};
+      const householdId = hhSnap.id;
+
+      // Resolve users in household (hhData.users may be array of user ids or objects)
+      const userIds: string[] = Array.isArray(hhData.users)
+        ? hhData.users.map((u: any) => (typeof u === "string" ? u : String(u.id)))
+        : [];
+
+      const users: { id: string; name: string | null }[] = [];
+      if (userIds.length > 0) {
+        const snaps = await Promise.all(userIds.map((uid) => firestore!.collection("users").doc(String(uid)).get()));
+        for (const s of snaps) {
+          if (s.exists) {
+            const d: any = s.data() || {};
+            users.push({ id: s.id, name: d.name ?? null });
+          }
+        }
+      }
+
+      // Aggregate points by assignee (assignedTo may be string userId or array)
+      const chores: any[] = Array.isArray(hhData.chores) ? hhData.chores : [];
+      const scores = new Map<string, number>();
+      // initialize for all known users
+      for (const u of users) scores.set(u.id, 0);
+
+      for (const c of chores) {
+        const pts = Number(c.points || 0);
+        if (Array.isArray(c.assignedTo)) {
+          for (const aid of c.assignedTo) {
+            const uid = String(aid);
+            scores.set(uid, (scores.get(uid) || 0) + pts);
+          }
+        } else if (c.assignedTo) {
+          const uid = String(c.assignedTo);
+          scores.set(uid, (scores.get(uid) || 0) + pts);
+        }
+      }
+
+      // Ensure every household user appears in perUser
+      const perUser = users.map((u) => ({ id: u.id, name: u.name ?? u.id, score: scores.get(u.id) ?? 0 }));
+
+      // If there are assign-to userIds not in household users, include them too
+      for (const [uid, sc] of scores.entries()) {
+        if (!perUser.find((p) => p.id === uid)) {
+          perUser.push({ id: uid, name: uid, score: sc });
+        }
+      }
+
+      const totalPoints = perUser.reduce((s, p) => s + (Number(p.score) || 0), 0);
+
+      // Gini coefficient -> fairness (0..100)
+      function gini(values: number[]) {
+        const n = values.length;
+        if (n === 0) return 0;
+        const sorted = values.slice().sort((a, b) => a - b);
+        const sum = sorted.reduce((s, v) => s + v, 0);
+        if (sum === 0) return 0;
+        let accum = 0;
+        for (let i = 0; i < n; i++) accum += (i + 1) * sorted[i];
+        const g = (2 * accum) / (n * sum) - (n + 1) / n;
+        return Math.max(0, Math.min(1, g));
+      }
+
+      const values = perUser.map((p) => Number(p.score || 0));
+      const g = gini(values);
+      const fairness = Math.round(Math.max(0, Math.min(100, (1 - g) * 100)));
+
+      return res.json({ householdId, perUser, totalPoints, fairness });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || "Failed to compute fairness" });
+    }
+  });
+
+  /**
+   * END OF ENDPOINT THAT MIGHT BE DELETED
+   */
 }
 
