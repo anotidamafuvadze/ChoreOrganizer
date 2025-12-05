@@ -1,6 +1,6 @@
 import express, { Express } from "express";
 import cors from "cors";
-import { registerUsersHandler } from "./src/users/registerUsers"
+import { registerUsersHandler } from "./src/users/registerUsers";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -8,7 +8,9 @@ export class ServerApp {
   public app: Express;
   private port: number;
 
-  constructor(port: number = (process.env.PORT ? Number(process.env.PORT) : 3000)) {
+  constructor(
+    port: number = process.env.PORT ? Number(process.env.PORT) : 3000
+  ) {
     this.app = express();
     this.port = port;
     this.configureMiddleware();
