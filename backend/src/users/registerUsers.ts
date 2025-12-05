@@ -14,6 +14,7 @@ function validateCreateUserRequest(body: any) {
     return { ok: false, error: "Firestore not initialized" };
   }
 
+
   const clientUser = body?.user || {};
   const householdName = body?.householdName || clientUser.householdName;
 
@@ -35,6 +36,11 @@ function validateCreateUserRequest(body: any) {
   if (!householdName) {
     return { ok: false, error: "Missing household name" };
   }
+  if (
+    !clientUser.chores ||
+    !Array.isArray(clientUser.chores) ||
+    clientUser.chores.length === 0
+  ) {
   if (
     !clientUser.chores ||
     !Array.isArray(clientUser.chores) ||
@@ -63,6 +69,7 @@ export function validateLoginRequest(body: any) {
   if (!email) {
     return { ok: false, error: "Missing email" };
   }
+
 
   if (!authProvider && !password) {
     return { ok: false, error: "Missing password for email login" };
@@ -164,7 +171,11 @@ export async function registerUsersHandler(app: Express) {
   app.get("/api/user/me", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
 
+
     try {
+      const email = String(req.query.email || "")
+        .trim()
+        .toLowerCase();
       const email = String(req.query.email || "")
         .trim()
         .toLowerCase();
@@ -219,6 +230,26 @@ export async function registerUsersHandler(app: Express) {
     }
   });
 
+  // List all users (dev/debug) - returns array of users
+  app.get("/api/users", async (req: Request, res: Response) => {
+    if (!(await initCollectionsIfNeeded(res))) return;
+
+    try {
+      if (!firestore) {
+        return res.status(500).json({ error: "Firestore not initialized" });
+      }
+
+      const q = await firestore.collection("users").get();
+      const users = q.docs
+        .filter((d) => d.id !== "_bootstrap")
+        .map((d) => ({ id: d.id, ...(d.data() || {}) }));
+
+      return res.json({ users });
+    } catch (error) {
+      return res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
   // Create user + household or join existing household
   app.post("/api/user", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
@@ -228,6 +259,10 @@ export async function registerUsersHandler(app: Express) {
       if (!validation.ok) {
         return res.status(400).json({ error: validation.error });
       }
+
+      const inviteCode = req.body?.inviteCode
+        ? String(req.body.inviteCode).trim()
+        : null;
 
       const inviteCode = req.body?.inviteCode
         ? String(req.body.inviteCode).trim()
@@ -289,11 +324,17 @@ export async function registerUsersHandler(app: Express) {
         let users: string[] = Array.isArray(hhData.users)
           ? hhData.users.map(String)
           : [];
+        let users: string[] = Array.isArray(hhData.users)
+          ? hhData.users.map(String)
+          : [];
         if (!users.includes(userId)) {
           users.push(userId);
           try {
             await hhRef.update({ users });
           } catch (error) {
+            return res
+              .status(500)
+              .json({ error: "Failed to add user to household" });
             return res
               .status(500)
               .json({ error: "Failed to add user to household" });
@@ -305,7 +346,14 @@ export async function registerUsersHandler(app: Express) {
             { householdName: hhData.name || null },
             { merge: true }
           );
+          await userRef.set(
+            { householdName: hhData.name || null },
+            { merge: true }
+          );
         } catch (error) {
+          return res
+            .status(500)
+            .json({ error: "Failed to update user household info" });
           return res
             .status(500)
             .json({ error: "Failed to update user household info" });
@@ -386,6 +434,9 @@ export async function registerUsersHandler(app: Express) {
         return res
           .status(500)
           .json({ error: "Failed to update user household" });
+        return res
+          .status(500)
+          .json({ error: "Failed to update user household" });
       }
 
       const finalUserSnap = await userRef.get();
@@ -408,6 +459,7 @@ export async function registerUsersHandler(app: Express) {
   // Login user
   app.post("/api/user/login", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
+
 
     try {
       const validated = validateLoginRequest(req.body);
@@ -517,6 +569,12 @@ export async function registerUsersHandler(app: Express) {
     householdName?: string | null,
     inviteCode?: string | null
   ) {
+  function setSessionCookies(
+    res: Response,
+    user: any,
+    householdName?: string | null,
+    inviteCode?: string | null
+  ) {
     try {
       const cookieOpts = {
         httpOnly: true,
@@ -573,6 +631,7 @@ export async function registerUsersHandler(app: Express) {
     try {
       if (!firestore) return null;
 
+
       const id = candidate?.id || candidate?.userId || null;
       if (id) {
         const snap = await firestore.collection("users").doc(String(id)).get();
@@ -582,7 +641,16 @@ export async function registerUsersHandler(app: Express) {
       const email = candidate?.email
         ? String(candidate.email).toLowerCase()
         : null;
+
+      const email = candidate?.email
+        ? String(candidate.email).toLowerCase()
+        : null;
       if (email) {
+        const q = await firestore
+          .collection("users")
+          .where("email", "==", email)
+          .limit(1)
+          .get();
         const q = await firestore
           .collection("users")
           .where("email", "==", email)
@@ -618,7 +686,6 @@ export async function registerUsersHandler(app: Express) {
       let inviteCode = inviteCodeInput;
       if (dbUser && dbUser.householdId) {
         try {
-          if (!firestore) throw new Error("Firestore not initialized");
           const hhSnap = await firestore
             .collection("households")
             .doc(String(dbUser.householdId))
@@ -640,6 +707,12 @@ export async function registerUsersHandler(app: Express) {
         householdName,
         inviteCode,
       });
+      return res.json({
+        success: true,
+        user: userToStore,
+        householdName,
+        inviteCode,
+      });
     } catch (error) {
       return res.status(500).json({
         error: "Failed to set session",
@@ -650,6 +723,7 @@ export async function registerUsersHandler(app: Express) {
   // Get session
   app.get("/api/session", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
+
 
     try {
       const rawUserCookie = readCookie(req, "chore_user");
@@ -675,7 +749,6 @@ export async function registerUsersHandler(app: Express) {
 
       if (user && user.householdId) {
         householdId = String(user.householdId);
-        if (!firestore) throw new Error("Firestore not initialized");
         const hhSnap = await firestore
           .collection("households")
           .doc(householdId)
@@ -728,3 +801,4 @@ export async function registerUsersHandler(app: Express) {
     }
   });
 }
+

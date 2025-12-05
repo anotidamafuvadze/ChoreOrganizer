@@ -19,7 +19,9 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
     const fetchChoresForUserId = async (userId: string) => {
       try {
         const res = await fetch(
-          `http://localhost:3000/api/chores?userId=${encodeURIComponent(userId)}`,
+          `http://localhost:3000/api/chores?userId=${encodeURIComponent(
+            userId
+          )}`,
           { method: "GET", credentials: "include" }
         );
         if (!res.ok) return null;
@@ -46,7 +48,8 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
               const meData = await meRes.json().catch(() => null);
               if (meData?.user) {
                 userId = meData.user.id;
-                if (typeof onUserUpdate === "function") onUserUpdate(meData.user as User);
+                if (typeof onUserUpdate === "function")
+                  onUserUpdate(meData.user as User);
               }
             }
           } catch (e) {
@@ -70,7 +73,8 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
             );
             if (diff === 0) dueDay = "Today";
             else if (diff === 1) dueDay = "Tomorrow";
-            else dueDay = due.toLocaleDateString(undefined, { weekday: "long" });
+            else
+              dueDay = due.toLocaleDateString(undefined, { weekday: "long" });
           }
           return { ...c, dueDay };
         });
@@ -91,7 +95,8 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
     const chore = chores.find((c) => c.id === id);
     if (!chore) return;
 
-    const newCompleted = typeof nextState === "boolean" ? nextState : !chore.completed;
+    const newCompleted =
+      typeof nextState === "boolean" ? nextState : !chore.completed;
 
     setLoadingMap((m) => ({ ...m, [id]: true }));
 
@@ -101,7 +106,10 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: currentUser.id, completed: newCompleted }),
+          body: JSON.stringify({
+            userId: currentUser.id,
+            completed: newCompleted,
+          }),
           credentials: "include",
         }
       );
@@ -111,7 +119,9 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
         return;
       }
 
-      setChores((prev) => prev.map((c) => (c.id === id ? { ...c, ...data.chore } : c)));
+      setChores((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...data.chore } : c))
+      );
 
       if (data.chore.completed) {
         setShowConfetti(id);
@@ -163,7 +173,7 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
                   : isDueToday
                   ? "bg-gradient-to-r from-yellow-100 to-orange-100 border-yellow-300"
                   : "bg-white/80 border-purple-100 hover:border-purple-200"
-                  // TODO: Add a different style for overdue chores
+                // TODO: Add a different style for overdue chores
               }`}
             >
               {showConfetti === chore.id && (
