@@ -6,6 +6,7 @@ app.use(express.json());
 import {
     fetchHouseholdFromFirestore,
     fetchUserByUid,
+    assignUserstoChores
 } from "../users/firebaseHelpers";
 
 type Household = { id: number, name: string, users: User[], chores: Chore[] }
@@ -23,6 +24,8 @@ type FlowNodeID = string;
 interface FlowNode {
     id: FlowNodeID;
     type: "source" | "sink" | "userClone" | "chore";
+    // optional metadata carried through the flow graph
+    meta?: any;
 }
 
 interface FlowEdge {
@@ -40,16 +43,17 @@ interface FlowGraph {
 export interface MCMFResult {
     flow: number;
     cost: number;
-    assignments: { userClone: string; choreNode: string }[];
+    // now returns the assigned user's name and the chore's name
+    assignments: { userName: string; choreName: string }[];
 }
 
 /**
  * Method takes in a User and a Chore and, depending on the User's preference about doing the chore and whether the user
- * has already done the chore the week prior, will give a weight to the user doing that chore. weights will vary slightly 
+ * has already done the chore the week prior, will give a weight to the user doing that chore. weights will vary slightly
  * for randomization purposes
- * @param user 
- * @param chore 
- * @returns 
+ * @param user
+ * @param chore
+ * @returns
  */
 function getChoreAssignmentCost(
     user: User,
@@ -112,7 +116,8 @@ export function buildFlowGraph(
         for (let c = 0; c < totalClones; c++) {
             const cloneID = makeID();
             userCloneNodes.push({ user, cloneID });
-            nodes.push({ id: cloneID, type: "userClone" });
+            // attach user metadata so downstream can report names
+            nodes.push({ id: cloneID, type: "userClone", meta: { userId: user.id, userName: user.name } });
 
             edges.push({
                 from: source.id,
@@ -128,7 +133,8 @@ export function buildFlowGraph(
     for (const chore of household.chores) {
         const choreID = makeID();
         choreNodes.push({ chore, id: choreID });
-        nodes.push({ id: choreID, type: "chore" });
+        // attach chore metadata so downstream can report names
+        nodes.push({ id: choreID, type: "chore", meta: { choreId: chore.id, choreName: chore.name } });
 
         edges.push({
             from: choreID,
@@ -234,8 +240,7 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
         cost += pushFlow * dist[sink];
     }
 
-    const assignments: { userClone: string; choreNode: string }[] = [];
-
+    const nameAssignments: { userName: string; choreName: string }[] = [];
     for (let u = 0; u < N; u++) {
         for (const edge of adj[u]) {
             if (
@@ -246,63 +251,53 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
                 graph.nodes[nodeIndex.get(edge.fromNode)!].type === "userClone" &&
                 graph.nodes[nodeIndex.get(edge.toNode)!].type === "chore"
             ) {
-                assignments.push({
-                    userClone: edge.fromNode,
-                    choreNode: edge.toNode
-                });
+                const fromNodeObj = graph.nodes[nodeIndex.get(edge.fromNode)!];
+                const toNodeObj = graph.nodes[nodeIndex.get(edge.toNode)!];
+                const userName = fromNodeObj.meta?.userName ?? String(edge.fromNode);
+                const choreName = toNodeObj.meta?.choreName ?? String(edge.toNode);
+                nameAssignments.push({ userName, choreName });
             }
         }
     }
 
-    return { flow, cost, assignments };
+    return { flow, cost, assignments: nameAssignments };
 }
 
-app.post("/assign-chores", (req: Request, res: Response) => {
-    const { household, householdId, week } = req.body;
-
+app.post("/assign-chores", async (req: Request, res: Response) => {
+    const { household, householdId } = req.body;
     try {
-        // If caller sent only householdId, fetch household from Firestore
+        // Resolve household object (either passed in or fetch by id)
         let hh = household;
         if (!hh && householdId) {
-            // fetch async inside try/catch by wrapping the handler body in an async IIFE
+            const fetched = await fetchHouseholdFromFirestore(String(householdId));
+            if (!fetched) {
+                return res.status(404).json({ success: false, error: "Household not found" });
+            }
+            hh = fetched;
         }
 
-        (async () => {
-            try {
-                if (!hh && householdId) {
-                    const fetched = await fetchHouseholdFromFirestore(String(householdId));
-                    if (!fetched) {
-                        res.status(404).json({ success: false, error: "Household not found" });
-                        return;
-                    }
-                    hh = fetched;
-                }
+        if (!hh) {
+            return res.status(400).json({ success: false, error: "missing household or householdId" });
+        }
 
-                if (!hh) {
-                    res.status(400).json({ success: false, error: "missing household or householdId" });
-                    return;
-                }
+        // Build flow network and compute assignment
+        const graph = buildFlowGraph(hh);
+        const flowResult = minCostMaxFlow(graph);
 
-                // Build flow network
-                const graph = buildFlowGraph(hh);
+        // Determine a reliable household id to pass to the assignment writer
+        const resolvedHouseholdId =
+            (typeof hh === "object" && hh.id !== undefined) ? String(hh.id) : String(householdId || hh);
 
-                // Compute min cost max flow
-                const result = minCostMaxFlow(graph);
+        // Persist assignments (await the Promise)
+        const assignmentResult = await assignUserstoChores(flowResult.assignments, resolvedHouseholdId);
 
-                res.json({
-                    success: true,
-                    flowResult: result
-                });
-            } catch (err: any) {
-                res.status(500).json({ success: false, error: err.message });
-            }
-        })();
-
-    } catch (err: any) {
-        res.status(500).json({
-            success: false,
-            error: err.message
+        return res.json({
+            success: true,
+            flowResult,
+            assignmentResult
         });
+    } catch (err: any) {
+        return res.status(500).json({ success: false, error: err.message });
     }
 });
 
