@@ -1,8 +1,8 @@
-// registerUsersHandler.ts
 import { Express, Request, Response } from "express";
 import dotenv from "dotenv";
 dotenv.config();
 import { firestore } from "./firebasesetup";
+import admin from "firebase-admin";
 import {
   clientChoresToHouseholdChores,
   makeInviteCode,
@@ -19,6 +19,7 @@ function validateCreateUserRequest(body: any) {
   if (!firestore) {
     return { ok: false, error: "Firestore not initialized" };
   }
+
 
   const clientUser = body?.user || {};
   const householdName = body?.householdName || clientUser.householdName;
@@ -69,6 +70,7 @@ export function validateLoginRequest(body: any) {
   if (!email) {
     return { ok: false, error: "Missing email" };
   }
+
 
   if (!authProvider && !password) {
     return { ok: false, error: "Missing password for email login" };
@@ -606,8 +608,11 @@ export function registerUsersHandler(app: Express) {
 
       if (user && user.householdId) {
         householdId = String(user.householdId);
-        if (!firestore) throw new Error("Firestore not initialized");
-        const hhSnap = await firestore
+        const db = firestore;
+        if (!db) {
+          return res.status(500).json({ error: "Firestore not initialized" });
+        }
+        const hhSnap = await (db as any)
           .collection("households")
           .doc(householdId)
           .get();
@@ -652,3 +657,4 @@ export function registerUsersHandler(app: Express) {
     }
   });
 }
+
