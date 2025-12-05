@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Trash2, Droplets, Sparkles, Utensils, Check } from "lucide-react";
 import { motion } from "motion/react";
 import { User } from "../../App";
@@ -6,66 +6,131 @@ import { Checkbox } from "../ui/checkbox";
 
 interface ChoresListProps {
   currentUser: User;
+  onUserUpdate?: (u: User) => void;
 }
 
-// TODO: Replace with real chores fetching from backend and update user points accordingly
-const mockChores = [
-  {
-    id: "1",
-    name: "Take Out Trash",
-    icon: Trash2,
-    dueDay: "Today",
-    points: 10,
-    completed: false,
-  },
-  {
-    id: "2",
-    name: "Wash Dishes",
-    icon: Droplets,
-    dueDay: "Tomorrow",
-    points: 15,
-    completed: false,
-  },
-  {
-    id: "3",
-    name: "Sweep Living Room",
-    icon: Sparkles,
-    dueDay: "Wednesday",
-    points: 12,
-    completed: false,
-  },
-  {
-    id: "4",
-    name: "Clean Kitchen",
-    icon: Utensils,
-    dueDay: "Friday",
-    points: 20,
-    completed: false,
-  },
-];
-
-export function ChoresList({ currentUser }: ChoresListProps) {
-  const [chores, setChores] = useState(mockChores);
+export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
+  const [chores, setChores] = useState<any[]>([]);
   const [showConfetti, setShowConfetti] = useState<string | null>(null);
+  const [loadingMap, setLoadingMap] = useState<Record<string, boolean>>({});
 
-  // changed: allow toggling both ways and accept optional nextState
-  const handleToggleChore = (id: string, nextState?: boolean) => {
+  useEffect(() => {
+    let mounted = true;
+    const fetchChoresForUserId = async (userId: string) => {
+      try {
+        const res = await fetch(
+          `http://localhost:3000/api/chores?userId=${encodeURIComponent(userId)}`,
+          { method: "GET", credentials: "include" }
+        );
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => null);
+        return data?.chores || [];
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const fetchChores = async () => {
+      try {
+        // If we don't have a reliable currentUser.id, try to fetch authoritative user from server
+        let userId = currentUser?.id;
+        if (!userId && currentUser?.email) {
+          try {
+            const meRes = await fetch(
+              `http://localhost:3000/api/user/me?email=${encodeURIComponent(
+                currentUser.email
+              )}`,
+              { method: "GET", credentials: "include" }
+            );
+            if (meRes.ok) {
+              const meData = await meRes.json().catch(() => null);
+              if (meData?.user) {
+                userId = meData.user.id;
+                if (typeof onUserUpdate === "function") onUserUpdate(meData.user as User);
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        if (!userId) return;
+
+        const choresArr = await fetchChoresForUserId(userId);
+        if (!mounted || choresArr == null) return;
+
+        const mapped = (choresArr || []).map((c: any) => {
+          const due = c.dueDate ? new Date(c.dueDate) : null;
+          let dueDay = "";
+          if (due) {
+            const today = new Date();
+            const diff = Math.floor(
+              (due.setHours(0, 0, 0, 0) - today.setHours(0, 0, 0, 0)) /
+                (1000 * 60 * 60 * 24)
+            );
+            if (diff === 0) dueDay = "Today";
+            else if (diff === 1) dueDay = "Tomorrow";
+            else dueDay = due.toLocaleDateString(undefined, { weekday: "long" });
+          }
+          return { ...c, dueDay };
+        });
+
+        setChores(mapped);
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    if (currentUser && currentUser.id) fetchChores();
+    return () => {
+      mounted = false;
+    };
+  }, [currentUser]);
+
+  const handleToggleChore = async (id: string, nextState?: boolean) => {
     const chore = chores.find((c) => c.id === id);
     if (!chore) return;
 
-    const newCompleted =
-      typeof nextState === "boolean" ? nextState : !chore.completed;
+    const newCompleted = typeof nextState === "boolean" ? nextState : !chore.completed;
 
-    setChores((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, completed: newCompleted } : c))
-    );
+    setLoadingMap((m) => ({ ...m, [id]: true }));
 
-    if (newCompleted) {
-      setShowConfetti(id);
-      setTimeout(() => setShowConfetti(null), 1000);
-    } else {
-      // if user unchecks, remove confetti and restore UI
-      setShowConfetti(null);
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/chores/${encodeURIComponent(id)}/complete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: currentUser.id, completed: newCompleted }),
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.chore) {
+        return;
+      }
+
+      setChores((prev) => prev.map((c) => (c.id === id ? { ...c, ...data.chore } : c)));
+
+      if (data.chore.completed) {
+        setShowConfetti(id);
+        setTimeout(() => setShowConfetti(null), 1000);
+      } else {
+        setShowConfetti(null);
+      }
+
+      if (data.user && typeof onUserUpdate === "function") {
+        try {
+          onUserUpdate(data.user as User);
+        } catch (e) {
+          // ignore callback errors
+        }
+      }
+    } catch (e) {
+      // ignore network errors for now
+    } finally {
+      setLoadingMap((m) => ({ ...m, [id]: false }));
     }
   };
 
