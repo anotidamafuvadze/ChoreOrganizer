@@ -27,11 +27,14 @@ describe("minCostMaxFlow", () => {
         expect(res.flow).toBe(2);
         expect(res.cost).toBe(2); // best assignment: u1->c1 (1) and u2->c2 (1)
         expect(res.assignments.length).toBe(2);
-        // verify assignments reference userClone -> chore node ids present in nodes
+
+        // assignments now carry userName and choreName (fallback to node ids when no meta present)
         const nodeIds = new Set(graph.nodes.map(n => n.id));
         for (const a of res.assignments) {
-            expect(nodeIds.has(a.userClone)).toBe(true);
-            expect(nodeIds.has(a.choreNode)).toBe(true);
+            expect(typeof a.userName).toBe("string");
+            expect(typeof a.choreName).toBe("string");
+            expect(nodeIds.has(a.userName)).toBe(true);
+            expect(nodeIds.has(a.choreName)).toBe(true);
         }
     });
 });
@@ -85,6 +88,7 @@ describe("buildFlowGraph", () => {
         // link household back-to-users (not strictly necessary but mirrors real data)
         household.users.forEach((u: any) => (u.household = household));
 
+        // buildFlowGraph now accepts only household
         const graph = buildFlowGraph(household);
         const numChoreNodes = graph.nodes.filter((n: any) => n.type === "chore").length;
         const numUserCloneNodes = graph.nodes.filter((n: any) => n.type === "userClone").length;

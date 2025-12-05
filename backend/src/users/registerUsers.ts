@@ -19,7 +19,7 @@ function validateCreateUserRequest(body: any) {
   if (!firestore) {
     return { ok: false, error: "Firestore not initialized" };
   }
-  
+
   const clientUser = body?.user || {};
   const householdName = body?.householdName || clientUser.householdName;
 
@@ -41,7 +41,11 @@ function validateCreateUserRequest(body: any) {
   if (!householdName) {
     return { ok: false, error: "Missing household name" };
   }
-  if (!clientUser.chores || !Array.isArray(clientUser.chores) || clientUser.chores.length === 0) {
+  if (
+    !clientUser.chores ||
+    !Array.isArray(clientUser.chores) ||
+    clientUser.chores.length === 0
+  ) {
     return { ok: false, error: "Must provide non-empty chores array" };
   }
 
@@ -65,7 +69,7 @@ export function validateLoginRequest(body: any) {
   if (!email) {
     return { ok: false, error: "Missing email" };
   }
-  
+
   if (!authProvider && !password) {
     return { ok: false, error: "Missing password for email login" };
   }
@@ -238,6 +242,10 @@ export function registerUsersHandler(app: Express) {
       const inviteCode = req.body?.inviteCode
         ? String(req.body.inviteCode).trim()
         : null;
+
+      const inviteCode = req.body?.inviteCode
+        ? String(req.body.inviteCode).trim()
+        : null;
       const clientUser = req.body?.user || {};
       const userId = String(clientUser.id || req.body.userId || "").trim();
       const email = String(clientUser.email).toLowerCase();
@@ -329,6 +337,9 @@ export function registerUsersHandler(app: Express) {
         }
 
         // Add user to household
+        let users: string[] = Array.isArray(hhData.users)
+          ? hhData.users.map(String)
+          : [];
         let users: string[] = Array.isArray(hhData.users)
           ? hhData.users.map(String)
           : [];
@@ -595,7 +606,11 @@ export function registerUsersHandler(app: Express) {
 
       if (user && user.householdId) {
         householdId = String(user.householdId);
-        const hhSnap = await firestore.collection("households").doc(householdId).get();
+        if (!firestore) throw new Error("Firestore not initialized");
+        const hhSnap = await firestore
+          .collection("households")
+          .doc(householdId)
+          .get();
         if (hhSnap.exists) {
           const hhData = hhSnap.data() || {};
           inviteCode = hhData.inviteCode || null;

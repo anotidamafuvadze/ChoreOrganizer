@@ -384,7 +384,12 @@ export default function App() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
           >
-            {activeView === "home" && <Dashboard currentUser={currentUser!} />}
+            {activeView === "home" && (
+              <Dashboard
+                currentUser={currentUser!}
+                onUserUpdate={(u) => setCurrentUser(u)}
+              />
+            )}
             {activeView === "chores" && <ChoresScreen />}
             {activeView === "calendar" && <CalendarScreen />}
             {activeView === "leaderboard" && <LeaderboardScreen />}

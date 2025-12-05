@@ -29,7 +29,7 @@ export async function fetchHouseholdFromFirestore(
         })),
     }));
 
-    const chores = (data.chores ?? []).map((c: any) => ({ assignedTo: c.assignedTo, completed: c.completed ,id: c.id, name: c.name }));
+    const chores = (data.chores ?? []).map((c: any) => ({ assignedTo: c.assignedTo, completed: c.completed, id: c.id, name: c.name }));
 
     const household = {
         id: doc.id,
@@ -66,4 +66,165 @@ export async function fetchUserByUid(uid: string): Promise<any | null> {
         })),
         householdId: data.householdId ?? null,
     };
+}
+
+export async function assignUserstoChores(assignments: { userName: string, choreName: string }[], householdId: string) {
+    if (!firestore) { throw new Error("Firestore not initialized"); }
+
+    const db = firestore; // narrow for TS
+    const hhRef = db.collection("households").doc(String(householdId));
+
+    return db.runTransaction(async (tx) => {
+        const hhSnap = await tx.get(hhRef);
+        if (!hhSnap.exists) throw new Error("Household not found");
+
+        const hhData: any = hhSnap.data() || {};
+        // clone household chores so we can mutate safely
+        const householdChores: any[] = Array.isArray(hhData.chores) ? hhData.chores.map((c: any) => ({ ...c })) : [];
+
+        // Build a map of choreName -> indices (multiple chores can share a name)
+        const choresByName = new Map<string, number[]>();
+        householdChores.forEach((c, idx) => {
+            const name = String(c.name ?? "");
+            const arr = choresByName.get(name) ?? [];
+            arr.push(idx);
+            choresByName.set(name, arr);
+        });
+
+        // Load all users that belong to this household
+        const usersSnap = await db.collection("users").where("householdId", "==", String(householdId)).get();
+        const userDocs = usersSnap.docs;
+
+        // Map userName -> docSnapshot (first match)
+        const usersByName = new Map<string, FirebaseFirestore.DocumentSnapshot>();
+        userDocs.forEach((d) => {
+            const data = d.data() || {};
+            const nm = String(data.name ?? "");
+            if (!usersByName.has(nm)) usersByName.set(nm, d);
+        });
+
+        // Capture pre-existing chores per user (ids) so we only delete those that existed before this run
+        const preExistingChoreIds = new Map<string, Set<string>>();
+        userDocs.forEach((d) => {
+            const data = d.data() || {};
+            const choresArr = Array.isArray(data.chores) ? data.chores : [];
+            preExistingChoreIds.set(d.id, new Set(choresArr.map((ch: any) => String(ch.id))));
+        });
+
+        // Track which household chore indices we've assigned in this run (avoid double-assigning same chore)
+        const assignedChoreIdx = new Set<number>();
+
+        // Map userId -> Set<choreId> for chores to store for that user after deletions
+        const newChoresByUser = new Map<string, Set<string>>();
+
+        // Process assignments: assign household chore entry -> user (update assignedTo + bump dueDate)
+        for (const a of assignments) {
+            const userDoc = usersByName.get(String(a.userName));
+            if (!userDoc) {
+                // user not found — skip
+                continue;
+            }
+            const userId = userDoc.id;
+
+            // find an available chore index with matching name that hasn't been consumed yet
+            const candidates = choresByName.get(String(a.choreName)) ?? [];
+            let chosenIdx: number | undefined = undefined;
+            for (const idx of candidates) {
+                if (!assignedChoreIdx.has(idx)) {
+                    chosenIdx = idx;
+                    break;
+                }
+            }
+            if (chosenIdx === undefined) {
+                // no matching chore available (skip)
+                continue;
+            }
+
+            assignedChoreIdx.add(chosenIdx);
+
+            // update the in-memory householdChores entry's assignedTo to userId
+            const originalChore = householdChores[chosenIdx] || {};
+            // bump dueDate by 7 days if present; otherwise set to now+7d
+            let newDueDate = originalChore.dueDate ?? null;
+            try {
+                const base = newDueDate ? Date.parse(String(newDueDate)) : Date.now();
+                newDueDate = new Date(base + 7 * 24 * 60 * 60 * 1000).toISOString();
+            } catch {
+                newDueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+            }
+
+            // preserve all fields, update assignedTo and dueDate
+            householdChores[chosenIdx] = {
+                ...originalChore,
+                assignedTo: userId,
+                dueDate: newDueDate
+            };
+
+            // record this chore id to add to user's chores (store full chore id)
+            const choreId = String(householdChores[chosenIdx].id);
+            const set = newChoresByUser.get(userId) ?? new Set<string>();
+            set.add(choreId);
+            newChoresByUser.set(userId, set);
+        }
+
+        // Prepare user updates:
+        // For each user doc, either set chores to newly assigned chores (full objects),
+        // or if user had pre-existing chores but no new ones assigned, clear them.
+        for (const d of userDocs) {
+            const userId = d.id;
+            const userRef = db.collection("users").doc(userId);
+            const existingData = d.data() || {};
+
+            const newSet = newChoresByUser.get(userId);
+            if (newSet && newSet.size > 0) {
+                // Build chores objects to store (preserve full chore fields)
+                const choresToStore = Array.from(newSet).map((cid) => {
+                    const chore = householdChores.find((hc) => String(hc.id) === String(cid));
+                    // ensure returned object contains all household fields
+                    return {
+                        id: chore?.id ?? cid,
+                        name: chore?.name ?? "",
+                        assignedTo: chore?.assignedTo ?? userId,
+                        completed: chore?.completed ?? false,
+                        dueDate: chore?.dueDate ?? null,
+                        frequency: chore?.frequency ?? null,
+                        icon: chore?.icon ?? null,
+                        points: chore?.points ?? null,
+                    };
+                });
+
+                // Build merged user object and ensure default fields exist
+                const updatedUser: any = {
+                    id: existingData.id ?? userId,
+                    name: existingData.name ?? String(existingData.name ?? ""),
+                    bday: existingData.bday ?? null,
+                    bootstrap: existingData.bootstrap ?? false,
+                    chores: choresToStore,
+                    color: existingData.color ?? null,
+                    email: existingData.email ?? null,
+                    householdId: existingData.householdId ?? existingData.householdId ?? null,
+                    joined: existingData.joined ?? new Date().toISOString(),
+                    mascot: existingData.mascot ?? null,
+                    password: existingData.password ?? null,
+                    preferences: existingData.preferences ?? {},
+                    pronouns: existingData.pronouns ?? null,
+                };
+
+                // merge into user doc
+                tx.set(userRef, updatedUser, { merge: true });
+            } else {
+                // If user had pre-existing chores at start, remove them (set to empty array)
+                const pre = preExistingChoreIds.get(userId);
+                if (pre && pre.size > 0) {
+                    tx.update(userRef, { chores: [] });
+                }
+                // otherwise leave user untouched
+            }
+        }
+
+        // Update household chores array with modified assignedTo/dueDate values
+        tx.update(hhRef, { chores: householdChores });
+
+        return { success: true, updatedHouseholdChores: householdChores.length, updatedUsers: newChoresByUser.size };
+    });
 }
