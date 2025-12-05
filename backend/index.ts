@@ -1,6 +1,6 @@
 import express, { Express } from "express";
 import cors from "cors";
-import { registerUsersHandler } from "./src/users/registerUsers";
+import { registerUsers } from "./src/users/registerUsers";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -30,7 +30,7 @@ export class ServerApp {
   }
 
   private registerHandlers() {
-    registerUsersHandler(this.app);
+    registerUsers(this.app);
   }
 
   public start() {
