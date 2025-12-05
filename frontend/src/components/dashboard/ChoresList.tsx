@@ -33,20 +33,116 @@ async function fetchChores(identifier: string) {
   }
 }
 
-function computeDueDay(dueDate?: string) {
-  if (!dueDate) return "";
-  const due = new Date(dueDate);
+// Calculate the actual due date based on frequency and last completion
+function calculateActualDueDate(chore: any): Date | null {
+  const frequency = chore.frequency || "weekly";
+  const lastCompletedAt = chore.lastCompletedAt;
+
+  // If chore was completed before, calculate next due date from last completion
+  if (lastCompletedAt) {
+    const lastCompleted = new Date(lastCompletedAt);
+    const nextDue = new Date(lastCompleted);
+
+    if (frequency === "daily") {
+      nextDue.setDate(nextDue.getDate() + 1);
+    } else if (frequency === "weekly") {
+      nextDue.setDate(nextDue.getDate() + 7);
+    } else if (frequency === "biweekly") {
+      nextDue.setDate(nextDue.getDate() + 14);
+    } else {
+      nextDue.setDate(nextDue.getDate() + 7); // default to weekly
+    }
+
+    console.log(`[${chore.name}] Calculated from lastCompletedAt:`, {
+      lastCompletedAt,
+      frequency,
+      nextDue: nextDue.toISOString(),
+      completed: chore.completed,
+    });
+    return nextDue;
+  }
+
+  // If never completed, chore is overdue based on frequency from today
+  // Calculate backwards: if it's weekly and today is Friday, it should have been done by last week
   const today = new Date();
+  const daysSinceCreation = chore.dueDate
+    ? Math.floor(
+        (today.getTime() - new Date(chore.dueDate).getTime()) /
+          (1000 * 60 * 60 * 24)
+      )
+    : 0;
+
+  let frequencyDays = 7; // default weekly
+  if (frequency === "daily") frequencyDays = 1;
+  else if (frequency === "biweekly") frequencyDays = 14;
+
+  // If the chore has existed longer than its frequency, it's overdue
+  // Set the due date to when it should have been completed
+  const shouldHaveBeenDue = new Date(chore.dueDate || today);
+
+  console.log(`[${chore.name}] Never completed:`, {
+    dueDate: chore.dueDate,
+    frequency,
+    frequencyDays,
+    daysSinceCreation,
+    shouldHaveBeenDue: shouldHaveBeenDue.toISOString(),
+    completed: chore.completed,
+  });
+
+  return shouldHaveBeenDue;
+}
+
+function computeDueDay(chore: any) {
+  const actualDueDate = calculateActualDueDate(chore);
+  if (!actualDueDate) return "";
+
+  const dueDay = new Date(actualDueDate);
+  dueDay.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   const diff = Math.floor(
-    (due.setHours(0, 0, 0, 0) - today.setHours(0, 0, 0, 0)) /
-      (1000 * 60 * 60 * 24)
+    (dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
   );
 
   if (diff === 0) return "Today";
   if (diff === 1) return "Tomorrow";
+  if (diff < 0) {
+    // If completed, show the actual day name instead of "Overdue"
+    if (chore.completed) {
+      return actualDueDate.toLocaleDateString(undefined, { weekday: "long" });
+    }
+    return "Overdue";
+  }
 
-  return due.toLocaleDateString(undefined, { weekday: "long" });
+  return actualDueDate.toLocaleDateString(undefined, { weekday: "long" });
+}
+
+function isOverdue(chore: any) {
+  const actualDueDate = calculateActualDueDate(chore);
+  if (!actualDueDate) return false;
+
+  const dueDay = new Date(actualDueDate);
+  dueDay.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const diff = Math.floor(
+    (dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  const result = diff < 0;
+
+  console.log(`[${chore.name}] Overdue check:`, {
+    dueDate: dueDay.toISOString(),
+    today: today.toISOString(),
+    diff,
+    isOverdue: result,
+    completed: chore.completed,
+  });
+
+  return result;
 }
 
 export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
@@ -104,10 +200,22 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
 
       if (!mounted) return;
 
-      const mapped = result.chores.map((c: any) => ({
-        ...c,
-        dueDay: computeDueDay(c.dueDate),
-      }));
+      console.log("Raw chores from API:", result.chores);
+
+      const mapped = result.chores.map((c: any) => {
+        console.log(`Processing chore [${c.name}]:`, {
+          dueDate: c.dueDate,
+          lastCompletedAt: c.lastCompletedAt,
+          frequency: c.frequency,
+          completed: c.completed,
+        });
+
+        return {
+          ...c,
+          dueDay: computeDueDay(c),
+          isOverdue: isOverdue(c),
+        };
+      });
 
       setChores(mapped);
       setDebugInfo({
@@ -193,6 +301,8 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
             className={`relative p-5 rounded-2xl border-2 transition-all ${
               chore.completed
                 ? "bg-green-100 border-green-300"
+                : chore.isOverdue && !chore.completed
+                ? "bg-gradient-to-r from-red-100 to-orange-100 border-red-400 shadow-md"
                 : chore.dueDay === "Today"
                 ? "bg-yellow-100 border-yellow-300"
                 : "bg-white/80 border-purple-100"
@@ -236,7 +346,16 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
                 </p>
 
                 <div className="text-xs mt-1 flex gap-2">
-                  <span className="px-2 py-1 rounded-full bg-purple-100 text-purple-600">
+                  <span
+                    className={`px-2 py-1 rounded-full ${
+                      chore.isOverdue && !chore.completed
+                        ? "bg-red-200 text-red-800 font-semibold"
+                        : chore.dueDay === "Today"
+                        ? "bg-orange-200 text-orange-700"
+                        : "bg-purple-100 text-purple-600"
+                    }`}
+                  >
+                    {chore.isOverdue && !chore.completed && "⚠️ "}
                     {chore.dueDay}
                   </span>
                   <span className="text-purple-500">{chore.points} points</span>
