@@ -7,16 +7,17 @@ import { LeaderboardPreview } from "./LeaderboardPreview";
 
 interface DashboardProps {
   currentUser: User;
+  onUserUpdate?: (u: User) => void;
 }
 
-export function Dashboard({ currentUser }: DashboardProps) {
+export function Dashboard({ currentUser, onUserUpdate }: DashboardProps) {
   return (
     <div className="space-y-6">
       <GreetingRow currentUser={currentUser} />
 
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 space-y-6">
-          <ChoresList currentUser={currentUser} />
+          <ChoresList currentUser={currentUser} onUserUpdate={onUserUpdate} />
           <FairnessMeter />
         </div>
 
