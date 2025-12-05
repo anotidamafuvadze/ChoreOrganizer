@@ -1,4 +1,3 @@
-// registerUsersHandler.ts
 import { Express, Request, Response } from "express";
 import dotenv from "dotenv";
 dotenv.config();
@@ -37,11 +36,6 @@ function validateCreateUserRequest(body: any) {
   if (!householdName) {
     return { ok: false, error: "Missing household name" };
   }
-  if (
-    !clientUser.chores ||
-    !Array.isArray(clientUser.chores) ||
-    clientUser.chores.length === 0
-  ) {
   if (
     !clientUser.chores ||
     !Array.isArray(clientUser.chores) ||
@@ -174,9 +168,6 @@ export async function registerUsersHandler(app: Express) {
 
 
     try {
-      const email = String(req.query.email || "")
-        .trim()
-        .toLowerCase();
       const email = String(req.query.email || "")
         .trim()
         .toLowerCase();
@@ -442,10 +433,6 @@ export async function registerUsersHandler(app: Express) {
       const inviteCode = req.body?.inviteCode
         ? String(req.body.inviteCode).trim()
         : null;
-
-      const inviteCode = req.body?.inviteCode
-        ? String(req.body.inviteCode).trim()
-        : null;
       const clientUser = req.body?.user || {};
       const userId = String(clientUser.id || req.body.userId || "").trim();
       const email = String(clientUser.email).toLowerCase();
@@ -503,17 +490,11 @@ export async function registerUsersHandler(app: Express) {
         let users: string[] = Array.isArray(hhData.users)
           ? hhData.users.map(String)
           : [];
-        let users: string[] = Array.isArray(hhData.users)
-          ? hhData.users.map(String)
-          : [];
         if (!users.includes(userId)) {
           users.push(userId);
           try {
             await hhRef.update({ users });
           } catch (error) {
-            return res
-              .status(500)
-              .json({ error: "Failed to add user to household" });
             return res
               .status(500)
               .json({ error: "Failed to add user to household" });
@@ -525,14 +506,7 @@ export async function registerUsersHandler(app: Express) {
             { householdName: hhData.name || null },
             { merge: true }
           );
-          await userRef.set(
-            { householdName: hhData.name || null },
-            { merge: true }
-          );
         } catch (error) {
-          return res
-            .status(500)
-            .json({ error: "Failed to update user household info" });
           return res
             .status(500)
             .json({ error: "Failed to update user household info" });
@@ -610,9 +584,6 @@ export async function registerUsersHandler(app: Express) {
       try {
         await userRef.set({ householdId, householdName }, { merge: true });
       } catch (error) {
-        return res
-          .status(500)
-          .json({ error: "Failed to update user household" });
         return res
           .status(500)
           .json({ error: "Failed to update user household" });
@@ -742,12 +713,7 @@ export async function registerUsersHandler(app: Express) {
     }
   });
 
-  function setSessionCookies(
-    res: Response,
-    user: any,
-    householdName?: string | null,
-    inviteCode?: string | null
-  ) {
+ 
   function setSessionCookies(
     res: Response,
     user: any,
@@ -820,16 +786,7 @@ export async function registerUsersHandler(app: Express) {
       const email = candidate?.email
         ? String(candidate.email).toLowerCase()
         : null;
-
-      const email = candidate?.email
-        ? String(candidate.email).toLowerCase()
-        : null;
       if (email) {
-        const q = await firestore
-          .collection("users")
-          .where("email", "==", email)
-          .limit(1)
-          .get();
         const q = await firestore
           .collection("users")
           .where("email", "==", email)
@@ -865,10 +822,12 @@ export async function registerUsersHandler(app: Express) {
       let inviteCode = inviteCodeInput;
       if (dbUser && dbUser.householdId) {
         try {
-          const hhSnap = await firestore
-            .collection("households")
-            .doc(String(dbUser.householdId))
-            .get();
+          const hhSnap = firestore
+            ? await firestore
+                .collection("households")
+                .doc(String(dbUser.householdId))
+                .get()
+            : ({ exists: false } as any);
           if (hhSnap.exists) {
             const hhData = hhSnap.data() || {};
             householdName = hhData.name ?? householdName;
@@ -880,12 +839,6 @@ export async function registerUsersHandler(app: Express) {
       }
 
       setSessionCookies(res, userToStore, householdName, inviteCode);
-      return res.json({
-        success: true,
-        user: userToStore,
-        householdName,
-        inviteCode,
-      });
       return res.json({
         success: true,
         user: userToStore,
@@ -928,7 +881,11 @@ export async function registerUsersHandler(app: Express) {
 
       if (user && user.householdId) {
         householdId = String(user.householdId);
-        const hhSnap = await firestore
+        const db = firestore;
+        if (!db) {
+          return res.status(500).json({ error: "Firestore not initialized" });
+        }
+        const hhSnap = await (db as any)
           .collection("households")
           .doc(householdId)
           .get();
