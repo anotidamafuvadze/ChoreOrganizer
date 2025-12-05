@@ -6,7 +6,13 @@ import { firestore } from "./firebasesetup";
 import {
   clientChoresToHouseholdChores,
   makeInviteCode,
+  setSessionCookies,
+  clearSessionCookies,
+  readCookie,
+  fetchUserFromDb,
 } from "./helperFunctions";
+
+// TODO: Get rid of console logs
 
 // Helper to validate required fields for creating a user + household
 function validateCreateUserRequest(body: any) {
@@ -113,13 +119,14 @@ async function initCollectionsIfNeeded(res: Response): Promise<boolean> {
 
     return true;
   } catch (error) {
+    console.log("[initCollectionsIfNeeded] Failed to initialize collections:", error);
     res.status(500).json({ error: "Failed to initialize collections" });
     return false;
   }
 }
 
-export async function registerUsersHandler(app: Express) {
-  // Validate invite code
+export function registerUsersHandler(app: Express) {
+  // POST /api/user/invite/:code -> Validate invite code
   app.get("/api/user/invite/:code", async (req: Request, res: Response) => {
     try {
       const inviteCode = String(req.params.code || "").trim();
@@ -150,45 +157,34 @@ export async function registerUsersHandler(app: Express) {
         chores: data.chores || [],
       });
     } catch (error) {
+      console.log("[GET /api/user/invite/:code] error:", error);
       return res.status(500).json({
         error: "Internal server error",
       });
     }
   });
 
-  // Get user by email
+  // TODO: Simplify this
+  // GET /api/user/me -> Get user by email
   app.get("/api/user/me", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
-    
+    if (!firestore) {
+          return res.status(500).json({ error: "Firestore not initialized" });
+        }
     try {
       const email = String(req.query.email || "").trim().toLowerCase();
-      if (!email) {
-        return res.status(400).json({ error: "Missing email" });
-      }
-      if (!firestore) {
-        return res.status(500).json({ error: "Firestore not initialized" });
-      }
+      if (!email) return res.status(400).json({ error: "Missing email query parameter" });
 
-      const q = await firestore
-        .collection("users")
-        .where("email", "==", email)
-        .limit(1)
-        .get();
-
-      if (q.empty) {
-        return res.status(404).json({ error: "User not found" });
-      }
-
-      const doc = q.docs[0];
-      const data = doc.data() || {};
-      const user = { id: doc.id, ...data };
+      const dbUser = await fetchUserFromDb({ email });
+      if (!dbUser) return res.status(404).json({ error: "User not found" });
+      const user = dbUser;
 
       let inviteCode: string | null = null;
       let householdId: string | null = null;
       let householdName: string | null = null;
 
-      if (data.householdId) {
-        householdId = String(data.householdId);
+      if (user.householdId) {
+        householdId = String(user.householdId);
         const hhSnap = await firestore
           .collection("households")
           .doc(householdId)
@@ -206,54 +202,103 @@ export async function registerUsersHandler(app: Express) {
         householdId,
         householdName,
       });
-    } catch (error) {
+    } catch (err) {
+      console.log("[GET /api/user/me] error:", err);
       return res.status(500).json({
         error: "Internal server error",
+        details: err instanceof Error ? err.message : String(err),
       });
     }
   });
 
-  // Create user + household or join existing household
+  // POST /api/user -> Create user + household or join existing household
   app.post("/api/user", async (req: Request, res: Response) => {
-    if (!(await initCollectionsIfNeeded(res))) return;
+    console.log("===== [POST /api/user] Incoming request =====");
+    console.log("[POST /api/user] raw body:", JSON.stringify(req.body, null, 2));
+
+    if (!(await initCollectionsIfNeeded(res))) {
+      console.log("[POST /api/user] initCollectionsIfNeeded returned false.");
+      return;
+    }
+
+    if (!firestore) {
+      console.log("[POST /api/user] Firestore not initialized.");
+      return res.status(500).json({ error: "Firestore not initialized" });
+    }
 
     try {
       const validation = validateCreateUserRequest(req.body);
+      console.log("[POST /api/user] validation result:", validation);
+
       if (!validation.ok) {
+        console.log("[POST /api/user] validation failed:", validation.error);
         return res.status(400).json({ error: validation.error });
       }
-      
-      const inviteCode = req.body?.inviteCode ? String(req.body.inviteCode).trim() : null;
+
+      const inviteCode = req.body?.inviteCode
+        ? String(req.body.inviteCode).trim()
+        : null;
       const clientUser = req.body?.user || {};
       const userId = String(clientUser.id || req.body.userId || "").trim();
       const email = String(clientUser.email).toLowerCase();
 
+      console.log("[POST /api/user] parsed fields:", {
+        inviteCode,
+        userId,
+        email,
+        hasHouseholdName: !!req.body?.householdName,
+        clientUserChoresType: Array.isArray(clientUser.chores)
+          ? "array"
+          : typeof clientUser.chores,
+      });
+
+      // ============ INVITE CODE PATH ============
       if (inviteCode) {
+        console.log("[POST /api/user] Using INVITE CODE path with inviteCode:", inviteCode);
+
+        if (!firestore) {
+          console.log("[POST /api/user] Firestore missing in invite path.");
+          return res.status(500).json({ error: "Firestore not initialized" });
+        }
+
         const q = await firestore
           .collection("households")
           .where("inviteCode", "==", inviteCode)
           .limit(1)
           .get();
 
-        if (q.empty) {
-          return res.status(404).json({ error: "Invite code not found" });
+        console.log("[POST /api/user] households query:", {
+          empty: q.empty,
+          docsCount: q.docs.length,
+        });
+
+        // Guard so this cannot crash
+        if (q.empty || !q.docs[0]) {
+          console.log("[POST /api/user] No household found for invite code.");
+          return res.status(404).json({ error: "Invalid invite code" });
         }
 
         const hhSnap = q.docs[0];
         const hhRef = hhSnap.ref;
         const hhData = hhSnap.data() || {};
 
-        // Check for email conflicts
-        const existing = await firestore
-          .collection("users")
-          .where("email", "==", email)
-          .limit(1)
-          .get();
-        if (!existing.empty && existing.docs[0].id !== userId) {
-          return res.status(409).json({ error: "Email already in use" });
+        console.log("[POST /api/user] household loaded:", {
+          householdId: hhRef.id,
+          householdName: hhData.name,
+        });
+
+        // Check for existing email conflict
+        const existingUser = await fetchUserFromDb({ email });
+        console.log("[POST /api/user] existingUser (invite path):", existingUser?.id);
+
+        if (existingUser && existingUser.id !== userId) {
+          console.log("[POST /api/user] Email already in use by another user.");
+          return res
+            .status(409)
+            .json({ error: "Email already in use by another user." });
         }
 
-        // Create/update user
+        // Create/update user and set householdId
         const userRef = firestore.collection("users").doc(userId);
         const userPayload: any = {
           id: userId,
@@ -270,32 +315,54 @@ export async function registerUsersHandler(app: Express) {
           joined: new Date().toISOString(),
         };
 
+        console.log("[POST /api/user] userPayload (invite path):", userPayload);
+
         try {
           await userRef.set(userPayload, { merge: true });
+          console.log("[POST /api/user] User created/updated (invite path).");
         } catch (error) {
+          console.log(
+            "[POST /api/user] Failed to create/update user (invite path):",
+            error
+          );
           return res.status(500).json({ error: "Failed to create user" });
         }
 
         // Add user to household
-        let users: string[] = Array.isArray(hhData.users) ? hhData.users.map(String) : [];
+        let users: string[] = Array.isArray(hhData.users)
+          ? hhData.users.map(String)
+          : [];
         if (!users.includes(userId)) {
           users.push(userId);
           try {
             await hhRef.update({ users });
+            console.log("[POST /api/user] Added user to household.");
           } catch (error) {
+            console.log(
+              "[POST /api/user] Failed to add user to household:",
+              error
+            );
             return res.status(500).json({ error: "Failed to add user to household" });
           }
         }
 
         try {
           await userRef.set({ householdName: hhData.name || null }, { merge: true });
+          console.log("[POST /api/user] Updated user householdName (invite path).");
         } catch (error) {
-          return res.status(500).json({ error: "Failed to update user household info" });
+          console.log(
+            "[POST /api/user] Failed to update user household info:",
+            error
+          );
+          return res
+            .status(500)
+            .json({ error: "Failed to update user household info" });
         }
 
         const finalUserSnap = await userRef.get();
         const finalUser = { id: finalUserSnap.id, ...finalUserSnap.data() };
 
+        console.log("[POST /api/user] SUCCESS (invite path).");
         return res.status(200).json({
           success: true,
           inviteCode,
@@ -305,15 +372,28 @@ export async function registerUsersHandler(app: Express) {
         });
       }
 
-      // Create new household
-      const householdName = req.body?.householdName || clientUser.householdName;
+      // ============ NEW HOUSEHOLD PATH ============
+      console.log("[POST /api/user] Using NEW HOUSEHOLD path (no inviteCode).");
+
+      const householdName =
+        req.body?.householdName || clientUser.householdName || null;
+      console.log("[POST /api/user] householdName:", householdName);
+
       const existing = await firestore
         .collection("users")
         .where("email", "==", email)
         .limit(1)
         .get();
 
+      console.log("[POST /api/user] existing user query:", {
+        empty: existing.empty,
+        docsCount: existing.docs.length,
+        existingUserId: existing.empty ? null : existing.docs[0].id,
+        userId,
+      });
+
       if (!existing.empty && existing.docs[0].id !== userId) {
+        console.log("[POST /api/user] Email already in use (new household path).");
         return res.status(409).json({ error: "Email already in use" });
       }
 
@@ -328,14 +408,18 @@ export async function registerUsersHandler(app: Express) {
         chores: clientUser.chores,
         householdId: null as string | null,
         email: clientUser.email,
-        password: clientUser.password,
+        password: clientUser.password ?? null,
         pronouns: clientUser.pronouns ?? null,
         joined: new Date().toISOString(),
       };
 
+      console.log("[POST /api/user] userPayload (new household path):", userPayload);
+
       try {
         await userRef.set(userPayload, { merge: true });
+        console.log("[POST /api/user] User created (new household path).");
       } catch (error) {
+        console.log("[POST /api/user] Failed to create user (new household path):", error);
         return res.status(500).json({ error: "Failed to create user" });
       }
 
@@ -343,9 +427,16 @@ export async function registerUsersHandler(app: Express) {
       const householdRef = firestore.collection("households").doc();
       const householdId = householdRef.id;
 
+      console.log("[POST /api/user] Creating household with id:", householdId);
+
       const choresForHousehold = clientChoresToHouseholdChores(
         clientUser.chores,
         [userId]
+      );
+
+      console.log(
+        "[POST /api/user] choresForHousehold length:",
+        Array.isArray(choresForHousehold) ? choresForHousehold.length : "not array"
       );
 
       try {
@@ -357,19 +448,24 @@ export async function registerUsersHandler(app: Express) {
           chores: choresForHousehold,
           createdAt: new Date().toISOString(),
         });
+        console.log("[POST /api/user] Household created.");
       } catch (error) {
+        console.log("[POST /api/user] Failed to create household:", error);
         return res.status(500).json({ error: "Failed to create household" });
       }
 
       try {
         await userRef.set({ householdId, householdName }, { merge: true });
+        console.log("[POST /api/user] Updated user with householdId + householdName.");
       } catch (error) {
+        console.log("[POST /api/user] Failed to update user household:", error);
         return res.status(500).json({ error: "Failed to update user household" });
       }
 
       const finalUserSnap = await userRef.get();
       const finalUser = { id: finalUserSnap.id, ...finalUserSnap.data() };
 
+      console.log("[POST /api/user] SUCCESS (new household path).");
       return res.status(200).json({
         success: true,
         inviteCode: inviteCodeNew,
@@ -377,18 +473,23 @@ export async function registerUsersHandler(app: Express) {
         householdName,
         user: finalUser,
       });
-
     } catch (error) {
+      console.log("[POST /api/user] UNHANDLED error:", error);
       return res.status(500).json({
         error: "Internal server error",
+        // TEMP: include basic info while debugging
+        details: error instanceof Error ? error.message : String(error),
       });
     }
   });
 
+
   // Login user
   app.post("/api/user/login", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
-    
+    if (!firestore) {
+      return res.status(500).json({ error: "Firestore not initialized" });
+    }
     try {
       const validated = validateLoginRequest(req.body);
       if (!validated.ok) {
@@ -396,34 +497,24 @@ export async function registerUsersHandler(app: Express) {
       }
 
       const { email, password, authProvider } = validated;
-      const q = await firestore
-        .collection("users")
-        .where("email", "==", email)
-        .limit(1)
-        .get();
+      const dbUser = await fetchUserFromDb({ email });
+      if (!dbUser) return res.status(404).json({ error: "User not found" });
+      const data = dbUser;
 
-      if (q.empty) {
-        return res.status(404).json({ error: "User not found" });
+      if (!authProvider || authProvider === "") {
+        if (!data.password || data.password !== password) {
+          return res.status(401).json({ error: "Invalid credentials" });
+        }
       }
 
-      const doc = q.docs[0];
-      const data = doc.data() || {};
-
-      if (!authProvider && data.password !== password) {
-        return res.status(401).json({ error: "Invalid credentials" });
-      }
-
-      const user = { id: doc.id, ...data };
+      const user = { id: data.id, ...data };
       let inviteCode: string | null = null;
       let householdId: string | null = null;
       let householdName: string | null = null;
 
       if (data.householdId) {
         householdId = String(data.householdId);
-        const hhSnap = await firestore
-          .collection("households")
-          .doc(householdId)
-          .get();
+        const hhSnap = await firestore.collection("households").doc(householdId).get();
         if (hhSnap.exists) {
           const hhData = hhSnap.data() || {};
           inviteCode = hhData.inviteCode || null;
@@ -438,178 +529,47 @@ export async function registerUsersHandler(app: Express) {
         householdName,
       });
 
-    } catch (error) {
+    } catch (err) {
+      console.log("[POST /api/user/login] error:", err);
       return res.status(500).json({
         error: "Internal server error",
+        details: err instanceof Error ? err.message : String(err),
       });
     }
   });
 
-  // Update user
-  app.put("/api/user/update", async (req: Request, res: Response) => {
+  // POST /api/session -> save session info into cookies
+  app.post("/api/session", async (req: Request, res: Response) => {
+    if (!(await initCollectionsIfNeeded(res))) return;
+    if (!firestore) {
+      return res.status(500).json({ error: "Firestore not initialized" });
+    }
+
     try {
-      const id = req.params.id;
-      const updates = req.body || {};
-
-      if (!id) {
-        return res.status(400).json({ error: "Missing user id" });
-      }
-      if (!firestore) {
-        return res.status(500).json({ error: "Firestore not initialized" });
-      }
-
-      const userRef = firestore.collection("users").doc(String(id));
-      const snap = await userRef.get();
-
-      if (!snap.exists) {
-        return res.status(404).json({ error: "User not found" });
-      }
-
-      const allowed: any = {};
-      if (updates.email) allowed.email = String(updates.email).toLowerCase();
-      if (updates.password) allowed.password = updates.password;
-      if (updates.name !== undefined) allowed.name = updates.name;
-      if (updates.pronouns !== undefined) allowed.pronouns = updates.pronouns;
-      if (updates.bday !== undefined) allowed.bday = updates.bday;
-
-      if (Object.keys(allowed).length === 0) {
-        return res.status(400).json({ error: "No valid fields to update" });
-      }
+      const user = req.body?.user ?? null;
+      const householdName = req.body?.householdName ?? null;
+      const inviteCode = req.body?.inviteCode ?? null;
 
       try {
-        await userRef.set(allowed, { merge: true });
-      } catch (error) {
-        return res.status(500).json({ error: "Failed to update user" });
+        setSessionCookies(res, user, householdName, inviteCode);
+      } catch (err) {
+        console.log("[POST /api/session] cookie set error:", err);
+        return res.status(200).json({ success: true, cookieSet: false });
       }
 
-      const updatedSnap = await userRef.get();
-      return res.json({ user: { id: updatedSnap.id, ...updatedSnap.data() } });
+      return res.status(200).json({ success: true, cookieSet: true, user, householdName, inviteCode });
     } catch (error) {
-      return res.status(500).json({
-        error: "Internal server error",
-      });
-    }
-  });
-
-  function setSessionCookies(res: Response, user: any, householdName?: string | null, inviteCode?: string | null) {
-    try {
-      const cookieOpts = {
-        httpOnly: true,
-        sameSite: "lax" as const,
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 1000 * 60 * 60 * 24 * 7,
-        path: "/",
-      };
-      if (user) {
-        const serialized = encodeURIComponent(JSON.stringify(user));
-        res.cookie("chore_user", serialized, cookieOpts);
-      }
-      if (householdName !== undefined && householdName !== null) {
-        res.cookie("chore_household", String(householdName), cookieOpts);
-      }
-      if (inviteCode !== undefined) {
-        if (inviteCode === null) res.clearCookie("chore_invite", { path: "/" });
-        else res.cookie("chore_invite", String(inviteCode), cookieOpts);
-      }
-    } catch (error) {
-      // Silently fail on cookie errors
-    }
-  }
-
-  function readCookie(req: Request, name: string): string | null {
-    try {
-      const anyReq: any = req;
-      if (anyReq.cookies && anyReq.cookies[name] !== undefined) {
-        const val = anyReq.cookies[name];
-        return typeof val === "string" ? val : JSON.stringify(val);
-      }
-
-      const header = req.headers?.cookie;
-      if (!header || typeof header !== "string") return null;
-
-      const pairs = header.split(";").map((s) => s.trim());
-      for (const p of pairs) {
-        if (p.startsWith(name + "=")) {
-          const raw = p.substring(name.length + 1);
-          try {
-            return decodeURIComponent(raw);
-          } catch {
-            return raw;
-          }
-        }
-      }
-      return null;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  async function fetchUserFromDb(candidate: any): Promise<any | null> {
-    try {
-      if (!firestore) return null;
-      
-      const id = candidate?.id || candidate?.userId || null;
-      if (id) {
-        const snap = await firestore.collection("users").doc(String(id)).get();
-        if (snap.exists) return { id: snap.id, ...snap.data() };
-      }
-      
-      const email = candidate?.email ? String(candidate.email).toLowerCase() : null;
-      if (email) {
-        const q = await firestore.collection("users").where("email", "==", email).limit(1).get();
-        if (!q.empty) {
-          const doc = q.docs[0];
-          return { id: doc.id, ...doc.data() };
-        }
-      }
-      return null;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  // Set session
-  app.post("/api/session", async (req: Request, res: Response) => {
-    try {
-      const body = req.body || {};
-      const clientUser = body.user || null;
-      const householdNameInput = body.householdName ?? null;
-      const inviteCodeInput = body.inviteCode ?? null;
-
-      if (!clientUser) {
-        return res.status(400).json({ error: "Missing user" });
-      }
-
-      const dbUser = await fetchUserFromDb(clientUser);
-      const userToStore = dbUser ?? clientUser;
-
-      let householdName = householdNameInput;
-      let inviteCode = inviteCodeInput;
-      if (dbUser && dbUser.householdId) {
-        try {
-          const hhSnap = await firestore.collection("households").doc(String(dbUser.householdId)).get();
-          if (hhSnap.exists) {
-            const hhData = hhSnap.data() || {};
-            householdName = hhData.name ?? householdName;
-            inviteCode = hhData.inviteCode ?? inviteCode;
-          }
-        } catch (error) {
-          // Ignore household lookup failure
-        }
-      }
-
-      setSessionCookies(res, userToStore, householdName, inviteCode);
-      return res.json({ success: true, user: userToStore, householdName, inviteCode });
-    } catch (error) {
-      return res.status(500).json({
-        error: "Failed to set session",
-      });
+      console.log("[POST /api/session] error:", error);
+      return res.status(500).json({ error: "Internal server error" });
     }
   });
 
   // Get session
   app.get("/api/session", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
+    if (!firestore) {
+      return res.status(500).json({ error: "Firestore not initialized" });
+    }
     
     try {
       const rawUserCookie = readCookie(req, "chore_user");
@@ -656,30 +616,23 @@ export async function registerUsersHandler(app: Express) {
 
       return res.json({ user, inviteCode, householdId, householdName });
     } catch (error) {
+      console.log("[GET /api/session] error:", error);
       return res.status(500).json({
         error: "Internal server error",
       });
     }
   });
 
-  // Logout
+  // POST /api/user/logout -> clear session cookies
   app.post("/api/user/logout", async (req: Request, res: Response) => {
     try {
-      const cookieOpts = {
-        httpOnly: true,
-        sameSite: "lax" as const,
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-      };
-
-      res.clearCookie("chore_user", cookieOpts);
-      res.clearCookie("chore_household", cookieOpts);
-      res.clearCookie("chore_invite", cookieOpts);
-
+      clearSessionCookies(res);
       return res.json({ success: true });
-    } catch (error) {
+    } catch (err) {
+      console.log("[POST /api/user/logout] error:", err);
       return res.status(500).json({
         error: "Failed to clear session",
+        details: err instanceof Error ? err.message : String(err),
       });
     }
   });

@@ -4,9 +4,10 @@ import React, { useState } from "react";
 interface HeaderProps {
   household: string;
   inviteCode?: string | null;
+  onLogout?: () => void;
 }
 
-export function Header({ household, inviteCode }: HeaderProps) {
+export function Header({ household, inviteCode, onLogout }: HeaderProps) {
   const [error, setError] = useState<string | null>(null);
 
   // TODO: Implement real week calculation based on current date and household start date
@@ -17,21 +18,6 @@ export function Header({ household, inviteCode }: HeaderProps) {
     const oneWeek = 1000 * 60 * 60 * 24 * 7;
     const week = Math.floor(diff / oneWeek);
     return `Week ${week}`;
-  };
-
-  const handleLogout = async () => {
-    try {
-      await fetch("http://localhost:3000/api/user/logout", {
-        method: "POST",
-        mode: "cors",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch (error) {
-      setError("Logout failed. Please try again.");
-      return;
-    }
-    window.location.replace("/?logged_out=1");
   };
 
   return (
@@ -85,7 +71,23 @@ export function Header({ household, inviteCode }: HeaderProps) {
 
         {/* Logout button */}
         <button
-          onClick={handleLogout}
+          onClick={async () => {
+            if (typeof onLogout === "function") {
+              onLogout();
+            } else {
+              // fallback: call backend then reload
+              try {
+                await fetch("http://localhost:3000/api/user/logout", {
+                  method: "POST",
+                  mode: "cors",
+                  credentials: "include",
+                });
+              } catch (e) {
+                // ignore
+              }
+              window.location.replace("/?logged_out=1");
+            }
+          }}
           className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 border border-purple-100 text-purple-600 hover:bg-white"
           title="Log out"
         >
