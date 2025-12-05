@@ -3,6 +3,7 @@ import { Express, Request, Response } from "express";
 import dotenv from "dotenv";
 dotenv.config();
 import { firestore } from "./firebasesetup";
+import admin from "firebase-admin";
 import {
   clientChoresToHouseholdChores,
   makeInviteCode,
@@ -247,6 +248,184 @@ export async function registerUsersHandler(app: Express) {
       return res.json({ users });
     } catch (error) {
       return res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  // Get chores for a user (only incomplete chores assigned to them)
+  app.get("/api/chores", async (req: Request, res: Response) => {
+    if (!(await initCollectionsIfNeeded(res))) return;
+
+    try {
+      // Support either userId or email query param
+      let userId = String(req.query.userId || "").trim();
+      const emailQuery = String(req.query.email || "")
+        .trim()
+        .toLowerCase();
+
+      if (!userId && !emailQuery) {
+        return res
+          .status(400)
+          .json({ error: "Missing userId or email query param" });
+      }
+
+      if (!firestore) {
+        return res.status(500).json({ error: "Firestore not initialized" });
+      }
+
+      // If email provided but no userId, try to resolve userId by email
+      if (!userId && emailQuery) {
+        const q = await firestore
+          .collection("users")
+          .where("email", "==", emailQuery)
+          .limit(1)
+          .get();
+        if (q.empty) {
+          return res
+            .status(404)
+            .json({ error: "User not found for provided email" });
+        }
+        const doc = q.docs[0];
+        userId = doc.id;
+      }
+
+      const userSnap = await firestore.collection("users").doc(userId).get();
+      if (!userSnap.exists) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const userData = userSnap.data() || {};
+      const householdId = userData.householdId || null;
+      if (!householdId) {
+        return res.json({ chores: [] });
+      }
+
+      const hhSnap = await firestore
+        .collection("households")
+        .doc(String(householdId))
+        .get();
+      if (!hhSnap.exists) {
+        return res.status(404).json({ error: "Household not found" });
+      }
+
+      const hhData = hhSnap.data() || {};
+      const allChores: any[] = Array.isArray(hhData.chores)
+        ? hhData.chores
+        : [];
+
+      // Return all chores assigned to the user (both completed and incomplete)
+      const assigned = allChores.filter((c) => {
+        let assignedTo: string[] = [];
+
+        if (Array.isArray(c.assignedTo)) {
+          assignedTo = c.assignedTo.map(String);
+        } else if (typeof c.assignedTo === "string") {
+          assignedTo = [c.assignedTo];
+        }
+
+        return assignedTo.includes(userId);
+      });
+
+      return res.json({
+        chores: assigned,
+        householdId: hhSnap.id,
+        householdName: hhData.name || null,
+      });
+    } catch (error) {
+      return res.status(500).json({ error: "Failed to fetch chores" });
+    }
+  });
+
+  // Mark a chore complete/incomplete and update user points (transactional)
+  app.post("/api/chores/:id/complete", async (req: Request, res: Response) => {
+    if (!(await initCollectionsIfNeeded(res))) return;
+
+    try {
+      const choreId = String(req.params.id || "").trim();
+      if (!choreId) return res.status(400).json({ error: "Missing chore id" });
+
+      const userId = String(req.body.userId || "").trim();
+      if (!userId)
+        return res.status(400).json({ error: "Missing userId in body" });
+
+      const requestedCompleted =
+        req.body.completed === undefined ? true : !!req.body.completed;
+
+      if (!firestore)
+        return res.status(500).json({ error: "Firestore not initialized" });
+
+      const userRef = firestore.collection("users").doc(userId);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists)
+        return res.status(404).json({ error: "User not found" });
+
+      const userData = userSnap.data() || {};
+      const householdId = userData.householdId || null;
+      if (!householdId)
+        return res.status(400).json({ error: "User has no household" });
+
+      const hhRef = firestore.collection("households").doc(String(householdId));
+
+      await firestore.runTransaction(async (t) => {
+        const hhSnap = await t.get(hhRef);
+        if (!hhSnap.exists) throw new Error("Household not found");
+        const hhData = hhSnap.data() || {};
+        const chores: any[] = Array.isArray(hhData.chores) ? hhData.chores : [];
+
+        const idx = chores.findIndex((c) => String(c.id) === choreId);
+        if (idx === -1) throw new Error("Chore not found in household");
+
+        const chore = chores[idx] || {};
+        const oldCompleted = !!chore.completed;
+
+        // Update chore completed state and metadata
+        const updatedChore = {
+          ...chore,
+          completed: requestedCompleted,
+          lastCompletedAt: requestedCompleted ? new Date().toISOString() : null,
+          lastCompletedBy: requestedCompleted ? userId : null,
+        };
+
+        chores[idx] = updatedChore;
+
+        t.update(hhRef, { chores });
+
+        // Adjust user points atomically if completion state changed
+        const points = Number(chore.points || 0);
+        let delta = 0;
+        if (!oldCompleted && requestedCompleted) delta = points;
+        else if (oldCompleted && !requestedCompleted) delta = -points;
+
+        if (delta !== 0) {
+          t.update(userRef, {
+            points: admin.firestore.FieldValue.increment(delta),
+          });
+        }
+      });
+
+      // Return updated chore and user
+      const finalUserSnap = await firestore
+        .collection("users")
+        .doc(userId)
+        .get();
+      const finalUser = finalUserSnap.exists
+        ? { id: finalUserSnap.id, ...finalUserSnap.data() }
+        : null;
+
+      const finalHhSnap = await firestore
+        .collection("households")
+        .doc(String(userData.householdId))
+        .get();
+      const finalHh = finalHhSnap.exists ? finalHhSnap.data() || {} : {};
+      const finalChores: any[] = Array.isArray(finalHh.chores)
+        ? finalHh.chores
+        : [];
+      const finalChore =
+        finalChores.find((c) => String(c.id) === choreId) || null;
+
+      return res.json({ success: true, chore: finalChore, user: finalUser });
+    } catch (error: any) {
+      const msg = error?.message || "Failed to update chore";
+      return res.status(500).json({ error: msg });
     }
   });
 
