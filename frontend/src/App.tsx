@@ -32,6 +32,7 @@ export interface User {
   chores?: Record<string, Chore>;
   email?: string;
   password?: string;
+  points?: number;
 }
 
 export interface Chore {

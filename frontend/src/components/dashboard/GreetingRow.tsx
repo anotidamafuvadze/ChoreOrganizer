@@ -8,7 +8,14 @@ interface GreetingRowProps {
 
 // TODO: Replace with real roommates data fetching
 const roommates: User[] = [
-  { id: "2", name: "Alex", pronouns: "they/them", mascot: "cat", color: "#A7C7E7", preferences: {} },
+  {
+    id: "2",
+    name: "Alex",
+    pronouns: "they/them",
+    mascot: "cat",
+    color: "#A7C7E7",
+    preferences: {},
+  },
   {
     id: "3",
     name: "Jamie",
@@ -17,7 +24,14 @@ const roommates: User[] = [
     color: "#E6B8FF",
     preferences: {},
   },
-  { id: "4", name: "Sam", pronouns: "they/them", mascot: "fox", color: "#FFDAB9", preferences: {} },
+  {
+    id: "4",
+    name: "Sam",
+    pronouns: "they/them",
+    mascot: "fox",
+    color: "#FFDAB9",
+    preferences: {},
+  },
 ];
 
 export function GreetingRow({ currentUser }: GreetingRowProps) {
@@ -91,8 +105,10 @@ export function GreetingRow({ currentUser }: GreetingRowProps) {
               <div>
                 <p className="text-purple-500 text-xs">Your Points</p>
 
-                {/* TODO: Replace with real points fetching */}
-                <p className="text-purple-700 text-xl">245</p>
+                {/* Display real points from currentUser (fallback to 0) */}
+                <p className="text-purple-700 text-xl">
+                  {currentUser?.points ?? 0}
+                </p>
               </div>
             </div>
           </div>

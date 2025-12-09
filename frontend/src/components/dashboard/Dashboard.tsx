@@ -18,12 +18,12 @@ export function Dashboard({ currentUser, onUserUpdate }: DashboardProps) {
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 space-y-6">
           <ChoresList currentUser={currentUser} onUserUpdate={onUserUpdate} />
-          <FairnessMeter />
+          <FairnessMeter currentUser={currentUser} />
         </div>
 
         <div className="space-y-6">
           <MiniCalendar />
-          <LeaderboardPreview />
+          <LeaderboardPreview currentUser={currentUser} />
         </div>
       </div>
     </div>
