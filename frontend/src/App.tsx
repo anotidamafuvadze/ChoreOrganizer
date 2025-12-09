@@ -450,6 +450,7 @@ export default function App() {
               <SettingsScreen
                 currentUser={currentUser!}
                 household={household}
+                inviteCode={householdInviteCode}
                 onUpdateUser={(u) => setCurrentUser(u)}
               />
             )}
