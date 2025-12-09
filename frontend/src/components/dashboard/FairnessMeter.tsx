@@ -98,7 +98,7 @@ export function FairnessMeter({ currentUser }: FairnessMeterProps) {
         <div>
           <h3 className="text-purple-700 mb-1">Fairness Meter</h3>
           <p className="text-purple-500 text-sm">
-            How balanced is your household? 🌟
+            How balanced are chore assignments this week? 🌟
           </p>
         </div>
         <div className="bg-gradient-to-br from-green-100 to-teal-100 p-3 rounded-2xl">

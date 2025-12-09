@@ -1,13 +1,15 @@
-import { Sparkles, LogOut } from "lucide-react";
+import { Sparkles, LogOut, Copy, Check } from "lucide-react";
 import React, { useState } from "react";
 
 interface HeaderProps {
   household: string;
   inviteCode?: string | null;
+  onLogout?: () => void;
 }
 
-export function Header({ household, inviteCode }: HeaderProps) {
+export function Header({ household, inviteCode, onLogout }: HeaderProps) {
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // TODO: Implement real week calculation based on current date and household start date
   const getCurrentWeek = () => {
@@ -19,19 +21,16 @@ export function Header({ household, inviteCode }: HeaderProps) {
     return `Week ${week}`;
   };
 
-  const handleLogout = async () => {
+  const copyToClipboard = async () => {
+    if (!inviteCode) return;
+
     try {
-      await fetch("http://localhost:3000/api/user/logout", {
-        method: "POST",
-        mode: "cors",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch (error) {
-      setError("Logout failed. Please try again.");
-      return;
+      await navigator.clipboard.writeText(inviteCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      setError("Failed to copy invite code");
     }
-    window.location.replace("/?logged_out=1");
   };
 
   return (
@@ -72,8 +71,24 @@ export function Header({ household, inviteCode }: HeaderProps) {
             <div className="text-xs uppercase tracking-wide text-gray-600">
               Invite Code
             </div>
-            <div className="mt-1 inline-flex items-center justify-center px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-pink-500 text-white font-mono font-semibold text-sm shadow-md">
-              {inviteCode}
+            <div className="mt-1 flex items-center gap-2">
+              <button
+                onClick={copyToClipboard}
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-pink-500 text-white font-mono font-semibold text-sm shadow-md hover:shadow-lg hover:from-purple-700 hover:to-pink-600 transition-all cursor-pointer"
+                title="Click to copy invite code"
+              >
+                {inviteCode}
+                {copied ? (
+                  <Check className="w-4 h-4" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
+              </button>
+              {copied && (
+                <span className="text-green-600 text-xs font-medium animate-fade-in">
+                  Copied!
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -85,7 +100,23 @@ export function Header({ household, inviteCode }: HeaderProps) {
 
         {/* Logout button */}
         <button
-          onClick={handleLogout}
+          onClick={async () => {
+            if (typeof onLogout === "function") {
+              onLogout();
+            } else {
+              // fallback: call backend then reload
+              try {
+                await fetch("http://localhost:3000/api/user/logout", {
+                  method: "POST",
+                  mode: "cors",
+                  credentials: "include",
+                });
+              } catch (e) {
+                // ignore
+              }
+              window.location.replace("/?logged_out=1");
+            }
+          }}
           className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 border border-purple-100 text-purple-600 hover:bg-white"
           title="Log out"
         >

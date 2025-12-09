@@ -8,18 +8,26 @@ import { PreferencesStep } from "./PreferencesStep";
 import { MascotStep } from "./MascotStep";
 import { ConfirmationStep } from "./ConfirmationStep";
 import { AuthenticationStep } from "./AuthenticationStep";
+import { HouseholdConfirmationStep } from "./HouseholdConfirmationStep";
 
 interface OnboardingFlowProps {
   onComplete: (
     user: User,
     household: string,
-    chores: { name: string; frequency: string }[]
+    chores: { name: string; frequency: string }[],
+    inviteCode?: string
   ) => void;
 }
 
 export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [step, setStep] = useState(0);
   const [householdName, setHouseholdName] = useState("");
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [householdData, setHouseholdData] = useState<{
+    id: string;
+    name: string;
+    inviteCode: string;
+  } | null>(null);
   const [selectedChores, setSelectedChores] = useState<
     { name: string; frequency: string }[]
   >([]);
@@ -29,46 +37,79 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [selectedMascot, setSelectedMascot] = useState<any>(null);
   const [authData, setAuthData] = useState<any>(null);
 
+  const handleBack = () => setStep((prev) => Math.max(0, prev - 1));
+
   const steps = [
     <WelcomeStep key="welcome" onNext={() => setStep(1)} />,
     <HouseholdStep
       key="household"
-      onNext={(name) => {
-        setHouseholdName(name);
-        setStep(2);
+      onNext={(nameOrData, code) => {
+        if (typeof nameOrData === "string") {
+          // Creating new household
+          setHouseholdName(nameOrData);
+          setInviteCode(null);
+          setHouseholdData(null);
+          setStep(2); // Skip confirmation, go to chores
+        } else {
+          // Joining existing household
+          setHouseholdData(nameOrData);
+          setHouseholdName(nameOrData.name);
+          setInviteCode(code || null);
+          setStep(2); // Go to confirmation step
+        }
       }}
+      onBack={handleBack}
     />,
+    // Conditionally show confirmation step only if joining household
+    ...(householdData
+      ? [
+          <HouseholdConfirmationStep
+            key="confirmation"
+            householdData={householdData}
+            onConfirm={() => setStep(3)}
+            onBack={() => {
+              setHouseholdData(null);
+              setInviteCode(null);
+              setStep(1);
+            }}
+          />,
+        ]
+      : []),
     <ChoresStep
       key="chores"
       onNext={(chores) => {
         setSelectedChores(chores);
-        setStep(3);
+        setStep(householdData ? 4 : 3);
       }}
+      onBack={handleBack}
     />,
     <PreferencesStep
       key="preferences"
       chores={selectedChores.map((c) => c.name)}
       onNext={(prefs) => {
         setPreferences(prefs);
-        setStep(4);
+        setStep(householdData ? 5 : 4);
       }}
+      onBack={handleBack}
     />,
     <MascotStep
       key="mascot"
       onNext={(mascot) => {
         setSelectedMascot(mascot);
-        setStep(5);
+        setStep(householdData ? 6 : 5);
       }}
+      onBack={handleBack}
     />,
     <AuthenticationStep
       key="auth"
       onNext={(data) => {
         setAuthData(data);
-        setStep(6);
+        setStep(householdData ? 7 : 6);
       }}
+      onBack={handleBack}
     />,
     <ConfirmationStep
-      key="confirmation"
+      key="final-confirmation"
       household={householdName}
       mascot={selectedMascot}
       onComplete={() => {
@@ -90,8 +131,14 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           password: authData?.password,
         } as User;
 
-        onComplete(user, householdName, selectedChores);
+        onComplete(
+          user,
+          householdName,
+          selectedChores,
+          inviteCode || undefined
+        );
       }}
+      onBack={handleBack}
     />,
   ];
 

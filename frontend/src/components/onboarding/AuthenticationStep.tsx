@@ -15,9 +15,13 @@ interface AuthenticationStepProps {
     password?: string | null;
     fbUser?: any;
   }) => void;
+  onBack?: () => void;
 }
 
-export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
+export function AuthenticationStep({
+  onNext,
+  onBack,
+}: AuthenticationStepProps) {
   const [name, setName] = useState("");
   const [pronouns, setPronouns] = useState("");
   const [bday, setBday] = useState("");
@@ -26,13 +30,19 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [emailTried, setEmailTried] = useState(false);
+  const [googleTried, setGoogleTried] = useState(false);
+
   const validateEmail = (email: string) => /\S+@\S+\.\S+/.test(email);
 
-  const checkEmailExists = async (email: string): Promise<{ exists: boolean; data?: any }> => {
+  const checkEmailExists = async (
+    email: string
+  ): Promise<{ exists: boolean; data?: any }> => {
     if (!email) return { exists: false };
 
-    // TODO: Implement proper user lookup with backend authentication service
-    const endpoint = `http://localhost:3000/api/user/me?email=${encodeURIComponent(email)}`;
+    const endpoint = `http://localhost:3000/api/user/me?email=${encodeURIComponent(
+      email
+    )}`;
 
     try {
       const res = await fetch(endpoint, {
@@ -57,32 +67,33 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
     return { exists: false };
   };
 
-  const submitEmailSignup = async () => {
-    setError(null);
-    
-    if (!name.trim()) {
-      setError("Please provide your name.");
-      return;
-    }
-    
-    if (!validateEmail(email)) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-    
-    if (!password || password.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
+  // compute whether buttons should be enabled (kept for validation UI only)
+  const canSubmitEmail =
+    name.trim().length > 0 &&
+    validateEmail(email.trim()) &&
+    password.length >= 6;
 
+  // TODO: Get rid of
+  const canSubmitGoogle = true; // allow google button to always be clickable
+
+  const submitEmailSignup = async () => {
+    setEmailTried(true);
+    setError(null);
+
+    if (!canSubmitEmail) return;
     setLoading(true);
-    
+
     try {
-      const { exists, data } = await checkEmailExists(email.trim().toLowerCase());
+      const { exists, data } = await checkEmailExists(
+        email.trim().toLowerCase()
+      );
 
       if (exists) {
-        const userInfo = data?.name || data?.email ? ` (${data.name || data.email})` : "";
-        setError(`An account already exists for this email${userInfo}. Please sign in or use a different email.`);
+        const userInfo =
+          data?.name || data?.email ? ` (${data.name || data.email})` : "";
+        setError(
+          `An account already exists for this email${userInfo}. Please sign in or use a different email.`
+        );
         return;
       }
 
@@ -102,12 +113,14 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
   };
 
   const handleGoogleSignUp = async () => {
+    // allow google flow without requiring pronouns/bday first
+    setGoogleTried(true);
     setError(null);
     setLoading(true);
-    
+
     try {
       const fbUser = await signInWithGoogle();
-      
+
       if (!fbUser || !fbUser.email) {
         setError("Google sign-in failed. Please try again.");
         return;
@@ -115,10 +128,17 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
 
       // Check if email already exists
       try {
-        const { exists, data } = await checkEmailExists(fbUser.email.trim().toLowerCase());
+        const { exists, data } = await checkEmailExists(
+          fbUser.email.trim().toLowerCase()
+        );
         if (exists) {
-          const userInfo = data?.user?.name || data?.user?.email ? ` (${data.user?.name || data.user?.email})` : "";
-          setError(`An account already exists for ${fbUser.email}${userInfo}. Please sign in instead or use the same provider.`);
+          const userInfo =
+            data?.user?.name || data?.user?.email
+              ? ` (${data.user?.name || data.user?.email})`
+              : "";
+          setError(
+            `An account already exists for ${fbUser.email}${userInfo}. Please sign in instead or use the same provider.`
+          );
           return;
         }
       } catch (e) {
@@ -144,64 +164,20 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
   return (
     <div className="bg-white/60 backdrop-blur-md rounded-3xl shadow-2xl p-12 border border-purple-100/50">
       <div className="text-center mb-8">
-        <h2 className="text-purple-700 mb-2">Almost there — create your account</h2>
-        <p className="text-purple-500">Provide a few details and a way to sign in.</p>
+        <h2 className="text-purple-700 mb-2">
+          Almost there — create your account
+        </h2>
+        <p className="text-purple-500">
+          Provide a few details and a way to sign in.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 mb-6">
-        <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Full name"
-          className="bg-white border-purple-200 rounded-xl"
-        />
-        <Input
-          value={pronouns}
-          onChange={(e) => setPronouns(e.target.value)}
-          placeholder="Pronouns (e.g. they/them)"
-          className="bg-white border-purple-200 rounded-xl"
-        />
-        <Input
-          type="date"
-          value={bday}
-          onChange={(e) => setBday(e.target.value)}
-          placeholder="Birthday"
-          className="bg-white border-purple-200 rounded-xl"
-        />
-        <Input
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email address"
-          className="bg-white border-purple-200 rounded-xl"
-        />
-        <Input
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Create a password"
-          type="password"
-          className="bg-white border-purple-200 rounded-xl"
-        />
-      </div>
-
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      )}
-
+      {/* New: Google button first */}
       <div className="flex gap-3 mb-4">
-        <Button
-          onClick={submitEmailSignup}
-          disabled={loading}
-          className="flex-1 bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-2xl py-3 disabled:opacity-50"
-        >
-          Continue <ArrowRight className="w-4 h-4 ml-2" />
-        </Button>
-
         <Button
           onClick={handleGoogleSignUp}
           disabled={loading}
-          className="flex items-center gap-2 bg-white border border-purple-200 rounded-2xl py-3 px-4"
+          className="flex items-center gap-2 bg-white border border-purple-200 rounded-2xl py-3 px-4 disabled:opacity-50 w-full justify-center"
         >
           <svg
             className="w-4 h-4"
@@ -227,7 +203,108 @@ export function AuthenticationStep({ onNext }: AuthenticationStepProps) {
               d="M272 107.7c39.3 0 74.5 13.5 102.3 40.1l76.6-76.6C405.3 24.9 344.5 0 272 0 167.2 0 76.2 56.5 31.7 142.9l88.6 69.8C141.7 155.3 201.5 107.7 272 107.7z"
             />
           </svg>
-          <span>Sign in with Google</span>
+          <span>Continue with Google</span>
+        </Button>
+      </div>
+
+      {/* Separator */}
+      <div className="text-center text-sm text-gray-500 mb-4">or email</div>
+
+      {/* Form */}
+      <div className="grid grid-cols-1 gap-4 mb-6">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Full name *"
+          className={
+            "bg-white border-purple-200 rounded-xl " +
+            (emailTried && !name.trim()
+              ? "border-red-500 ring-1 ring-red-200"
+              : "")
+          }
+        />
+        {emailTried && !name.trim() && (
+          <p className="text-xs text-red-600 mt-0.1 mb-0.1">
+            Please enter your full name.
+          </p>
+        )}
+
+        <Input
+          value={pronouns}
+          onChange={(e) => setPronouns(e.target.value)}
+          placeholder="Pronouns (optional)"
+          className={"bg-white border-purple-200 rounded-xl"}
+        />
+        {/* pronouns are optional now - removed required error */}
+
+        <Input
+          type="date"
+          value={bday}
+          onChange={(e) => setBday(e.target.value)}
+          placeholder="Birthdate (optional) — MM/DD/YYYY"
+          aria-label="Birthdate (MM/DD/YYYY)"
+          className={"bg-white border-purple-200 rounded-xl"}
+        />
+        <p className="text-xs text-gray-500 mt-0.1 mb-0.1">
+          Birthdate (optional)
+        </p>
+        {/* birthday is optional now - removed required error */}
+
+        <Input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email address *"
+          className={
+            "bg-white border-purple-200 rounded-xl " +
+            (emailTried && !validateEmail(email)
+              ? "border-red-500 ring-1 ring-red-200"
+              : "")
+          }
+        />
+        {emailTried && !validateEmail(email) && (
+          <p className="text-xs text-red-600 mt-0.1 mb-0.1">
+            Please enter a valid email address.
+          </p>
+        )}
+
+        <Input
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Create a password *"
+          type="password"
+          className={
+            "bg-white border-purple-200 rounded-xl " +
+            (emailTried && password.length < 6
+              ? "border-red-500 ring-1 ring-red-200"
+              : "")
+          }
+        />
+        {emailTried && password.length < 6 && (
+          <p className="text-xs text-red-600 mt-0.1 mb-0.1">
+            Password must be at least 6 characters.
+          </p>
+        )}
+      </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      )}
+
+      <div className="flex gap-3 mb-4">
+        <Button
+          onClick={onBack}
+          className="flex-1 bg-white hover:bg-purple-50 text-purple-600 border-2 border-purple-200 rounded-2xl py-3"
+        >
+          Back
+        </Button>
+        <Button
+          onClick={submitEmailSignup}
+          disabled={loading}
+          className="flex-1 bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-2xl py-3 disabled:opacity-50"
+        >
+          Continue <ArrowRight className="w-4 h-4 ml-2" />
         </Button>
       </div>
     </div>

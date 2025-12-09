@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect} from 'react';
 import { ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { MascotIllustration } from '../mascots/MascotIllustration';
 import { Button } from '../ui/button';
 
+
 const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const mascots = ['cat', 'bunny', 'fox', 'frog', 'cat'] as const;
+
+
 
 // TODO: Replace the Calendar data on the CalendarScreen with real data fetching from backend
 const calendarData = Array.from({ length: 7 }, (_, i) => ({
@@ -22,9 +25,80 @@ const calendarData = Array.from({ length: 7 }, (_, i) => ({
   ] : []
 }));
 
+//These TYPES are essential for defining the structure of chore and day data in the CalendarScreen component. 
+import type { Mascot } from '../mascots/MascotIllustration';
+
+type Chore = {
+  name: string;
+  mascot: Mascot;
+  color: string;
+  completed: boolean;
+  time: string;
+};
+
+type DayData = {
+  date: number;
+  day: string;
+  chores: Chore[];
+};
+
+type Stats = {
+  completed: number;
+  remaining: number;
+  percent: number;
+};
+
 export function CalendarScreen() {
   const [view, setView] = useState<'week' | 'month'>('week');
   const [filterBy, setFilterBy] = useState<'all' | 'you' | 'roommate'>('all');
+  const [currentWeek, setCurrentWeek] = useState(0); // 0 = this week
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+  const [calendarData, setCalendarData] = useState<DayData[]>([]);
+  const [stats, setStats] = useState<Stats>({ completed: 0, remaining: 0, percent: 0 });
+  const [loading, setLoading] = useState(false);
+  
+  //this fetches calendar data from the backend based on the current view (week or month) and 
+  // updates the state accordingly
+  useEffect(() => {
+    async function fetchCalendar() {
+      setLoading(true);
+      try {
+        let url = '';
+        if (view === 'week') {
+          url = `/api/chores?weekOffset=${currentWeek}`;
+        } else {
+          url = `/api/chores?month=${currentMonth + 1}`;
+        }
+        const res = await fetch(url);
+        const data = await res.json();
+        setCalendarData(data.days);
+        setStats(data.stats);
+      } catch (e) {
+        setCalendarData([]);
+        setStats({ completed: 0, remaining: 0, percent: 0 });
+      }
+      setLoading(false);
+    }
+    fetchCalendar();
+  }, [currentWeek, currentMonth, view]);
+
+  function handlePrev() {
+    if (view === 'week') {
+      setCurrentWeek((w) => w - 1);
+    } else {
+      setCurrentMonth((m) => (m === 0 ? 11 : m - 1));
+    }
+  }
+  function handleNext() {
+    if (view === 'week') {
+      setCurrentWeek((w) => w + 1);
+    } else {
+      setCurrentMonth((m) => (m === 11 ? 0 : m + 1));
+    }
+  }
+
+  // Gets the month name for display in the calendar header (grabs the current year from the user's system clock)
+const monthName = new Date(new Date().getFullYear(), currentMonth).toLocaleString('default', { month: 'long' });
 
   return (
     <div className="space-y-6">
@@ -77,11 +151,63 @@ export function CalendarScreen() {
         </button>
       </div>
       {/* TODO: Add a month view and allow toggling between months on the CalendarScreen */}
+      {/* Month View */}
       {view === 'month' && (
+          <div className="grid grid-cols-7 gap-4">
+            {loading ? (
+              <div className="col-span-7 text-center text-purple-400">Loading...</div>
+            ) : (
+              calendarData.map((day, index) => (
+                <div
+                  key={index}
+                  className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 border min-h-[120px] border-purple-100/50 shadow"
+                >
+                  <div className="text-center mb-2 pb-2 border-b border-purple-100">
+                    <p className="text-purple-500 text-xs mb-1">{day.day}</p>
+                    <div className="w-8 h-8 rounded-xl mx-auto flex items-center justify-center bg-purple-50 text-purple-600">
+                      {day.date}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {day.chores.map((chore, choreIndex) => (
+                      <div
+                        key={choreIndex}
+                        className={`p-2 rounded-xl border ${
+                          chore.completed
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-purple-50 border-purple-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <MascotIllustration mascot={chore.mascot} color={chore.color} size={20} />
+                          {chore.completed && (
+                            <div className="w-3 h-3 bg-green-400 rounded-full flex items-center justify-center ml-auto">
+                              <svg className="w-2 h-2 text-white" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                        <p className={`text-xs mb-1 ${
+                          chore.completed ? 'text-green-700' : 'text-purple-700'
+                        }`}>
+                          {chore.name}
+                        </p>
+                        <p className="text-xs text-purple-400">{chore.time}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+      {/* {view === 'month' && (
         <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-8 border border-purple-100/50 shadow-lg text-center text-purple-600">
           Month view coming soon! Stay tuned 📅✨
         </div>
-      )}
+      )} */}
 
 
       {/* Week View */}

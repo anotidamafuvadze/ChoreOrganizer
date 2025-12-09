@@ -26,6 +26,7 @@ import "../../styles/onboarding.css";
 interface ChoresStepProps {
   // changed: emit chores with frequency
   onNext: (chores: { name: string; frequency: string }[]) => void;
+  onBack?: () => void;
 }
 
 const FREQUENCY_OPTIONS = [
@@ -91,7 +92,7 @@ const defaultChores = [
   },
 ];
 
-export function ChoresStep({ onNext }: ChoresStepProps) {
+export function ChoresStep({ onNext, onBack }: ChoresStepProps) {
   const [selected, setSelected] = useState<string[]>([
     "trash",
     "dishes",
@@ -342,13 +343,21 @@ export function ChoresStep({ onNext }: ChoresStepProps) {
         </p>
       </div>
 
-      <Button
-        onClick={handleContinue}
-        disabled={selected.length === 0}
-        className="w-full bg-gradient-to-r from-purple-400 to-pink-400 hover:from-purple-500 hover:to-pink-500 text-white rounded-2xl py-6 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        Continue <ArrowRight className="w-4 h-4 ml-2" />
-      </Button>
+      <div className="flex gap-3">
+        <Button
+          onClick={onBack}
+          className="flex-1 bg-white hover:bg-purple-50 text-purple-600 border-2 border-purple-200 rounded-2xl py-6"
+        >
+          Back
+        </Button>
+        <Button
+          onClick={handleContinue}
+          disabled={selected.length === 0}
+          className="flex-1 bg-gradient-to-r from-purple-400 to-pink-400 hover:from-purple-500 hover:to-pink-500 text-white rounded-2xl py-6 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Continue <ArrowRight className="w-4 h-4 ml-2" />
+        </Button>
+      </div>
     </div>
   );
 }

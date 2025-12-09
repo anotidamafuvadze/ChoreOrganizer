@@ -10,6 +10,7 @@ import { ChoresScreen } from "./components/chores/ChoresScreen";
 import { CalendarScreen } from "./components/calendar/CalendarScreen";
 import { LeaderboardScreen } from "./components/leaderboard/LeaderboardScreen";
 import { SettingsScreen } from "./components/settings/SettingsScreen";
+import ErrorToast from "./components/ui/error-toast";
 
 // Types
 export type Mascot = "frog" | "cat" | "bunny" | "bird" | "fox" | "bear";
@@ -86,17 +87,6 @@ export default function App() {
   // Restore session from server cookies on initial load
   useEffect(() => {
     let cancelled = false;
-
-    // TODO: Ensure logged out users don't trigger session restore
-    // const params = new URLSearchParams(window.location.search);
-    // if (params.get("logged_out")) {
-    //   const clean = window.location.pathname + window.location.hash;
-    //   window.history.replaceState({}, "", clean);
-    //   setLoading(false);
-    //   setScreen("login");
-    //   return;
-    // }
-
     const restoreSession = async () => {
       try {
         const res = await fetch("http://localhost:3000/api/session", {
@@ -120,18 +110,13 @@ export default function App() {
         if (data.householdName) setHousehold(data.householdName);
         if (data.inviteCode) setHouseholdInviteCode(data.inviteCode);
         setScreen("app");
-      } catch (error) {
-        // Ignore network errors during session restoration
-      } finally {
+        if (!cancelled) setLoading(false); // ensure loading state cleared on success
+      } catch (err) {
         if (!cancelled) setLoading(false);
       }
     };
 
     restoreSession();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   // Clear error after 5 seconds
@@ -168,7 +153,6 @@ export default function App() {
 
         if (!res.ok || !data?.user) {
           setError("Login failed. Please check your credentials.");
-          setScreen("onboarding");
           return;
         }
 
@@ -185,7 +169,6 @@ export default function App() {
         return;
       } catch (error) {
         setError("Network error. Please check your connection.");
-        setScreen("onboarding");
         return;
       }
     }
@@ -198,7 +181,6 @@ export default function App() {
 
       if (!fbUser || !fbUser.email) {
         setError("Google login failed. Please try again.");
-        setScreen("onboarding");
         return;
       }
 
@@ -217,13 +199,11 @@ export default function App() {
 
       if (res.status === 404 || !data?.user) {
         setError("Account not found. Please sign up first.");
-        setScreen("onboarding");
         return;
       }
 
       if (!res.ok) {
         setError("Login error. Please try again.");
-        setScreen("onboarding");
         return;
       }
 
@@ -241,6 +221,30 @@ export default function App() {
       setError("Google login failed. Please try again.");
       setScreen("onboarding");
     }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch("http://localhost:3000/api/user/logout", {
+        method: "POST",
+        mode: "cors",
+        credentials: "include",
+      });
+    } catch (e) {
+      // ignore network errors; still clear client state
+    }
+
+    // Clear client session state and navigate to login screen
+    setCurrentUser(null);
+    setHousehold("");
+    setHouseholdInviteCode(null);
+    setScreen("login");
+    setActiveView("home");
+    setLoading(false);
+  };
+
+  const onSignUpClick = () => {
+    setScreen("onboarding");
   };
 
   const handleOnboardingComplete = async (
@@ -298,26 +302,79 @@ export default function App() {
 
       const data = await res.json().catch(() => null);
 
-      if (!res.ok || !data?.user) {
-        setError("Failed to save profile. Please try again.");
-      } else {
-        try {
-          if (inviteCode) {
-            if (data.householdName) setHousehold(data.householdName);
-          } else if (data.inviteCode) {
-            const inviteCodeCreated = data.inviteCode;
-            setHouseholdInviteCode(inviteCodeCreated);
-            await sendSessionToServer(merged, householdName, inviteCodeCreated);
-          }
-        } catch (error) {
-          setError("Error processing household data.");
+      if (!res.ok) {
+        // Handle specific error cases
+        if (res.status === 404) {
+          setError("Household not found. Please check invite code.");
+          return;
+        } else if (res.status === 409) {
+          setError("Email already in use.");
+          return;
+        } else if (res.status === 500) {
+          setError("Server error. Please try again.");
+          return;
+        } else {
+          setError(data?.error || "Failed to save profile. Please try again.");
+          return;
         }
       }
-    } catch (error) {
-      setError("Network error. Please check your connection.");
-    } finally {
+
+      if (!data?.user) {
+        setError("Failed to save profile. Please try again.");
+        return;
+      }
+
+      // Update state with response data
+      setCurrentUser(data.user);
+
+      // Handle household data
+      let finalInviteCode = inviteCode || null;
+      let finalHouseholdName = householdName;
+      let finalHouseholdId = data.householdId || null;
+
+      if (inviteCode && data.householdName) {
+        finalHouseholdName = data.householdName;
+        setHousehold(data.householdName);
+      } else if (!inviteCode && data.inviteCode) {
+        finalInviteCode = data.inviteCode;
+        setHouseholdInviteCode(data.inviteCode);
+      }
+
+      // TODO: Display errors in UI
+
+      // If user joined via invite code, finalize household membership
+      if (inviteCode && finalHouseholdId) {
+        try {
+          const finalizeRes = await fetch(
+            "http://localhost:3000/api/user/finalize-household",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: merged.id,
+                householdId: finalHouseholdId,
+              }),
+              mode: "cors",
+              credentials: "include",
+            }
+          );
+
+          if (!finalizeRes.ok) {
+            console.error("Failed to finalize household membership");
+            // Don't block user from proceeding, just log the error
+          }
+        } catch (error) {
+          console.error("Error finalizing household membership:", error);
+          // Don't block user from proceeding
+        }
+      }
+
+      await sendSessionToServer(merged, finalHouseholdName, finalInviteCode);
+
       setScreen("app");
       setLoading(false);
+    } catch (error) {
+      setError("Network error. Please check your connection.");
     }
   };
 
@@ -341,39 +398,36 @@ export default function App() {
     );
   }
 
-  // Render screens based on current state
   if (screen === "login") {
     return (
-      <LoginScreen
-        onLoginComplete={handleLoginComplete}
-        currentUser={currentUser}
-      />
+      <>
+        <ErrorToast message={error} />
+        <LoginScreen
+          onLoginComplete={handleLoginComplete}
+          onSignUpClick={onSignUpClick}
+          currentUser={currentUser}
+        />
+      </>
     );
   }
 
   if (screen === "onboarding") {
-    return <OnboardingFlow onComplete={handleOnboardingComplete} />;
+    return (
+      <>
+        <ErrorToast message={error} />
+        <OnboardingFlow onComplete={handleOnboardingComplete} />
+      </>
+    );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FFF9E6] via-[#FFE8F5] to-[#E6F7FF] pb-24">
-      {/* Error Toast Notification */}
-      <AnimatePresence>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
-          >
-            <div className="bg-red-100 border border-red-400 text-red-700 px-6 py-3 rounded-lg shadow-lg flex items-center gap-2">
-              <span className="text-sm font-medium">{error}</span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <Header household={household} inviteCode={householdInviteCode} />
+      <ErrorToast message={error} />
+      <Header
+        household={household}
+        inviteCode={householdInviteCode}
+        onLogout={handleLogout}
+      />
 
       <main className="max-w-7xl mx-auto px-8 py-6">
         <AnimatePresence mode="wait">
@@ -397,6 +451,7 @@ export default function App() {
               <SettingsScreen
                 currentUser={currentUser!}
                 household={household}
+                inviteCode={householdInviteCode}
                 onUpdateUser={(u) => setCurrentUser(u)}
               />
             )}

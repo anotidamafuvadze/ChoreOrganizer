@@ -8,15 +8,17 @@ import {
   makeInviteCode,
 } from "./helperFunctions";
 
+// TODO: Break some of this up into smaller files 
+
 // Helper to validate required fields for creating a user + household
 function validateCreateUserRequest(body: any) {
   if (!firestore) {
     return { ok: false, error: "Firestore not initialized" };
   }
 
-
   const clientUser = body?.user || {};
   const householdName = body?.householdName || clientUser.householdName;
+  const inviteCode = body?.inviteCode;
 
   if (!clientUser.id && !body.userId) {
     return { ok: false, error: "Missing user id" };
@@ -33,7 +35,7 @@ function validateCreateUserRequest(body: any) {
   if (!clientUser.email) {
     return { ok: false, error: "Missing user email" };
   }
-  if (!householdName) {
+  if (!inviteCode && !householdName) {
     return { ok: false, error: "Missing household name" };
   }
   if (
@@ -124,7 +126,69 @@ async function initCollectionsIfNeeded(res: Response): Promise<boolean> {
   }
 }
 
-export async function registerUsersHandler(app: Express) {
+
+async function resolveRoommateNames(hhData: any): Promise<string[]> {
+  try {
+    if (!firestore) return [];
+    const rawUsers = Array.isArray(hhData?.users) ? hhData.users : [];
+    const userIds = rawUsers
+      .map((u: any) =>
+        typeof u === "string" ? u : u && (u.id || u.userId) ? String(u.id ?? u.userId) : null
+      )
+      .filter(Boolean) as string[];
+
+    if (userIds.length === 0) return [];
+
+    const snaps = await Promise.all(
+      userIds.map((uid) => firestore!.collection("users").doc(String(uid)).get())
+    );
+
+    const names = snaps
+      .map((s) => (s.exists ? ((s.data() || {}).name ?? null) : null))
+      .filter(Boolean) as string[];
+
+    return names;
+  } catch (e) {
+    return [];
+  }
+}
+
+async function resolveRoommatesDetails(hhData: any): Promise<
+  { name: string; mascot?: string | null; color?: string | null }[]
+> {
+  try {
+    if (!firestore) return [];
+    const rawUsers = Array.isArray(hhData?.users) ? hhData.users : [];
+    const userIds = rawUsers
+      .map((u: any) =>
+        typeof u === "string" ? u : u && (u.id || u.userId) ? String(u.id ?? u.userId) : null
+      )
+      .filter(Boolean) as string[];
+
+    if (userIds.length === 0) return [];
+
+    const snaps = await Promise.all(
+      userIds.map((uid) => firestore!.collection("users").doc(String(uid)).get())
+    );
+
+    return snaps
+      .map((s) =>
+        s.exists
+          ? {
+              name: ((s.data() || {}).name ?? null) as string | null,
+              mascot: ((s.data() || {}).mascot ?? null) as string | null,
+              color: ((s.data() || {}).color ?? null) as string | null,
+            }
+          : null
+      )
+      .filter(Boolean)
+      .map((r: any) => ({ name: String(r.name || ""), mascot: r.mascot, color: r.color }));
+  } catch (e) {
+    return [];
+  }
+}
+
+export async function registerUsers(app: Express) {
   // Validate invite code
   app.get("/api/user/invite/:code", async (req: Request, res: Response) => {
     try {
@@ -148,14 +212,19 @@ export async function registerUsersHandler(app: Express) {
 
       const doc = q.docs[0];
       const data = doc.data() || {};
+
+      // Use helper to resolve roommate names (only names returned)
+      const roomates = await resolveRoommateNames(data);
+
+      // Return only essential data for validation + roommate names (only names)
       return res.json({
         id: doc.id,
         name: data.name || null,
         inviteCode: data.inviteCode || null,
-        users: data.users || [],
-        chores: data.chores || [],
+        roomates,
       });
     } catch (error) {
+      console.log("Internal server error:", error);
       return res.status(500).json({
         error: "Internal server error",
       });
@@ -463,7 +532,7 @@ export async function registerUsersHandler(app: Express) {
           return res.status(409).json({ error: "Email already in use" });
         }
 
-        // Create/update user
+        // Create/update user with householdId but DO NOT add to household.users yet
         const userRef = firestore.collection("users").doc(userId);
         const userPayload: any = {
           id: userId,
@@ -486,20 +555,8 @@ export async function registerUsersHandler(app: Express) {
           return res.status(500).json({ error: "Failed to create user" });
         }
 
-        // Add user to household
-        let users: string[] = Array.isArray(hhData.users)
-          ? hhData.users.map(String)
-          : [];
-        if (!users.includes(userId)) {
-          users.push(userId);
-          try {
-            await hhRef.update({ users });
-          } catch (error) {
-            return res
-              .status(500)
-              .json({ error: "Failed to add user to household" });
-          }
-        }
+        // DO NOT add user to household.users array yet
+        // This will be done after onboarding completion via a separate endpoint
 
         try {
           await userRef.set(
@@ -713,7 +770,7 @@ export async function registerUsersHandler(app: Express) {
     }
   });
 
- 
+
   function setSessionCookies(
     res: Response,
     user: any,
@@ -824,9 +881,9 @@ export async function registerUsersHandler(app: Express) {
         try {
           const hhSnap = firestore
             ? await firestore
-                .collection("households")
-                .doc(String(dbUser.householdId))
-                .get()
+              .collection("households")
+              .doc(String(dbUser.householdId))
+              .get()
             : ({ exists: false } as any);
           if (hhSnap.exists) {
             const hhData = hhSnap.data() || {};
@@ -936,5 +993,219 @@ export async function registerUsersHandler(app: Express) {
       });
     }
   });
+
+  // Finalize household membership (add user to household users array and merge chores)
+  app.post("/api/user/finalize-household", async (req: Request, res: Response) => {
+    if (!(await initCollectionsIfNeeded(res))) return;
+
+    try {
+      const userId = String(req.body.userId || "").trim();
+      const householdId = String(req.body.householdId || "").trim();
+
+      if (!userId) {
+        return res.status(400).json({ error: "Missing userId" });
+      }
+      if (!householdId) {
+        return res.status(400).json({ error: "Missing householdId" });
+      }
+      if (!firestore) {
+        return res.status(500).json({ error: "Firestore not initialized" });
+      }
+
+      // Get user document
+      const userRef = firestore.collection("users").doc(userId);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const userData = userSnap.data() || {};
+      const userChores = Array.isArray(userData.chores) ? userData.chores : [];
+
+      // Get household document
+      const hhRef = firestore.collection("households").doc(householdId);
+      const hhSnap = await hhRef.get();
+      if (!hhSnap.exists) {
+        return res.status(404).json({ error: "Household not found" });
+      }
+
+      const hhData = hhSnap.data() || {};
+      let householdUsers: string[] = Array.isArray(hhData.users)
+        ? hhData.users.map(String)
+        : [];
+      let householdChores: any[] = Array.isArray(hhData.chores) ? hhData.chores : [];
+
+      // Add user to household users array if not already present
+      if (!householdUsers.includes(userId)) {
+        householdUsers.push(userId);
+      }
+
+      // Convert user's chores to household chores format and add them
+      const newChores = clientChoresToHouseholdChores(userChores, [userId]);
+      householdChores = [...householdChores, ...newChores];
+
+      // Update household document
+      try {
+        await hhRef.update({
+          users: householdUsers,
+          chores: householdChores,
+        });
+      } catch (error) {
+        return res.status(500).json({ error: "Failed to update household" });
+      }
+
+      return res.json({
+        success: true,
+        householdId,
+        message: "User successfully added to household",
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        error: error?.message || "Failed to finalize household membership",
+      });
+    }
+  });
+
+  // New endpoint: get roommate details for a household by id
+  app.get("/api/household/:id/roommates", async (req: Request, res: Response) => {
+    try {
+      const householdId = String(req.params.id || "").trim();
+      if (!householdId) return res.status(400).json({ error: "Missing household id" });
+      if (!firestore) return res.status(500).json({ error: "Firestore not initialized" });
+
+      const hhSnap = await firestore.collection("households").doc(householdId).get();
+      if (!hhSnap.exists) return res.status(404).json({ error: "Household not found" });
+
+      const hhData = hhSnap.data() || {};
+      const roommates = await resolveRoommatesDetails(hhData);
+
+      return res.json({ householdId: hhSnap.id, roommates });
+    } catch (error) {
+      console.error("Failed to fetch roommates:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+/**
+ * BEGINNNING OF ENDPOINT THAT MIGHT BE DELETED
+ */
+  // GET household fairness (aggregates chore.points by assignee and returns per-user scores + fairness)
+  app.get("/api/household/fairness", async (req: Request, res: Response) => {
+    if (!(await initCollectionsIfNeeded(res))) return;
+    try {
+      const qId = String(req.query.id || "").trim();
+      const qName = String(req.query.name || "").trim();
+
+      // Resolve household document
+      let hhSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+      if (qId) {
+        hhSnap = await firestore!.collection("households").doc(qId).get();
+      } else if (qName) {
+        const qq = await firestore!.collection("households").where("name", "==", qName).limit(1).get();
+        if (!qq.empty) hhSnap = qq.docs[0];
+      } else {
+        // Try to resolve household from session cookie (chore_user) or fallback to cookie values
+        try {
+          const raw = readCookie(req, "chore_user");
+          if (raw) {
+            const decoded = decodeURIComponent(String(raw));
+            const cookieUser = JSON.parse(decoded);
+            // cookieUser may contain householdId
+            const hid = cookieUser?.householdId ?? cookieUser?.household?.id ?? null;
+            if (hid) {
+              hhSnap = await firestore!.collection("households").doc(String(hid)).get();
+            } else {
+              // try resolving user's household id from users collection
+              const dbUser = await fetchUserFromDb(cookieUser);
+              if (dbUser && dbUser.householdId) {
+                hhSnap = await firestore!.collection("households").doc(String(dbUser.householdId)).get();
+              }
+            }
+          }
+        } catch (e) {
+          // ignore - we'll error below if still not found
+        }
+      }
+
+      if (!hhSnap || !hhSnap.exists) {
+        return res.status(404).json({ error: "Household not found" });
+      }
+
+      const hhData: any = hhSnap.data() || {};
+      const householdId = hhSnap.id;
+
+      // Resolve users in household (hhData.users may be array of user ids or objects)
+      const userIds: string[] = Array.isArray(hhData.users)
+        ? hhData.users.map((u: any) => (typeof u === "string" ? u : String(u.id)))
+        : [];
+
+      const users: { id: string; name: string | null }[] = [];
+      if (userIds.length > 0) {
+        const snaps = await Promise.all(userIds.map((uid) => firestore!.collection("users").doc(String(uid)).get()));
+        for (const s of snaps) {
+          if (s.exists) {
+            const d: any = s.data() || {};
+            users.push({ id: s.id, name: d.name ?? null });
+          }
+        }
+      }
+
+      // Aggregate points by assignee (assignedTo may be string userId or array)
+      const chores: any[] = Array.isArray(hhData.chores) ? hhData.chores : [];
+      const scores = new Map<string, number>();
+      // initialize for all known users
+      for (const u of users) scores.set(u.id, 0);
+
+      for (const c of chores) {
+        const pts = Number(c.points || 0);
+        if (Array.isArray(c.assignedTo)) {
+          for (const aid of c.assignedTo) {
+            const uid = String(aid);
+            scores.set(uid, (scores.get(uid) || 0) + pts);
+          }
+        } else if (c.assignedTo) {
+          const uid = String(c.assignedTo);
+          scores.set(uid, (scores.get(uid) || 0) + pts);
+        }
+      }
+
+      // Ensure every household user appears in perUser
+      const perUser = users.map((u) => ({ id: u.id, name: u.name ?? u.id, score: scores.get(u.id) ?? 0 }));
+
+      // If there are assign-to userIds not in household users, include them too
+      for (const [uid, sc] of scores.entries()) {
+        if (!perUser.find((p) => p.id === uid)) {
+          perUser.push({ id: uid, name: uid, score: sc });
+        }
+      }
+
+      const totalPoints = perUser.reduce((s, p) => s + (Number(p.score) || 0), 0);
+
+      // Gini coefficient -> fairness (0..100)
+      function gini(values: number[]) {
+        const n = values.length;
+        if (n === 0) return 0;
+        const sorted = values.slice().sort((a, b) => a - b);
+        const sum = sorted.reduce((s, v) => s + v, 0);
+        if (sum === 0) return 0;
+        let accum = 0;
+        for (let i = 0; i < n; i++) accum += (i + 1) * sorted[i];
+        const g = (2 * accum) / (n * sum) - (n + 1) / n;
+        return Math.max(0, Math.min(1, g));
+      }
+
+      const values = perUser.map((p) => Number(p.score || 0));
+      const g = gini(values);
+      const fairness = Math.round(Math.max(0, Math.min(100, (1 - g) * 100)));
+
+      return res.json({ householdId, perUser, totalPoints, fairness });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || "Failed to compute fairness" });
+    }
+  });
+
+  /**
+   * END OF ENDPOINT THAT MIGHT BE DELETED
+   */
 }
 

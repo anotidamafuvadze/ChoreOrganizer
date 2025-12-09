@@ -17,6 +17,7 @@ import { Input } from "../ui/input";
 interface SettingsScreenProps {
   currentUser: User;
   household: string;
+  inviteCode?: string | null;
   onUpdateUser?: (user: User) => void;
 }
 
@@ -55,6 +56,7 @@ const roommates = [
 export function SettingsScreen({
   currentUser,
   household,
+  inviteCode,
   onUpdateUser,
 }: SettingsScreenProps) {
   // TODO: Replace with real notification settings fetching from backend and using notification API
@@ -158,10 +160,11 @@ export function SettingsScreen({
   // TODO: Implement support contact functionality
   const handleSupportClick = () => {};
 
-  // TODO: Replace with real invite code fetching from backend
-  const inviteCode = "XYZ123";
+  // Use the real invite code passed from the app (Header uses the same source)
+  const resolvedInviteCode = inviteCode || "Unavailable";
 
   const handleCopyCode = () => {
+    if (!inviteCode) return;
     navigator.clipboard.writeText(inviteCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -562,7 +565,7 @@ export function SettingsScreen({
                 <p className="text-purple-600 text-sm mb-2">Invite Code</p>
                 <div className="flex gap-2">
                   <Input
-                    value={inviteCode}
+                    value={resolvedInviteCode}
                     readOnly
                     className="bg-purple-50 border-purple-200 rounded-xl text-center tracking-widest"
                   />
