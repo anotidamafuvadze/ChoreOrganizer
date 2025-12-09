@@ -1,26 +1,71 @@
 import { Sparkles, Sun, Moon } from "lucide-react";
 import { User } from "../../App";
 import { MascotIllustration } from "../mascots/MascotIllustration";
+import { useEffect, useState } from "react";
 
 interface GreetingRowProps {
   currentUser: User;
 }
 
-// TODO: Replace with real roommates data fetching
-const roommates: User[] = [
-  { id: "2", name: "Alex", pronouns: "they/them", mascot: "cat", color: "#A7C7E7", preferences: {} },
-  {
-    id: "3",
-    name: "Jamie",
-    pronouns: "she/her",
-    mascot: "bunny",
-    color: "#E6B8FF",
-    preferences: {},
-  },
-  { id: "4", name: "Sam", pronouns: "they/them", mascot: "fox", color: "#FFDAB9", preferences: {} },
-];
-
 export function GreetingRow({ currentUser }: GreetingRowProps) {
+  const [roommates, setRoommates] = useState<
+    { name: string; mascot?: string | null; color?: string | null }[]
+  >([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRoommates() {
+      try {
+        // Try to read householdId from currentUser first (may exist on server responses)
+        let householdId = (currentUser as any)?.householdId ?? null;
+
+        // Fallback: fetch session to get householdId if not present
+        if (!householdId) {
+          try {
+            const s = await fetch("http://localhost:3000/api/session", {
+              method: "GET",
+              mode: "cors",
+              credentials: "include",
+            });
+            if (s.ok) {
+              const sd = await s.json().catch(() => null);
+              householdId = sd?.householdId ?? null;
+            }
+          } catch {
+            householdId = null;
+          }
+        }
+
+        if (!householdId) {
+          if (!cancelled) setRoommates([]);
+          return;
+        }
+
+        const res = await fetch(
+          `http://localhost:3000/api/household/${encodeURIComponent(
+            String(householdId)
+          )}/roommates`,
+          { method: "GET", mode: "cors", credentials: "include" }
+        );
+        if (!res.ok) {
+          if (!cancelled) setRoommates([]);
+          return;
+        }
+        const data = await res.json().catch(() => null);
+        if (!cancelled)
+          setRoommates(Array.isArray(data?.roommates) ? data.roommates : []);
+      } catch {
+        if (!cancelled) setRoommates([]);
+      }
+    }
+
+    loadRoommates();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return { text: "Good morning", icon: Sun };
@@ -64,16 +109,12 @@ export function GreetingRow({ currentUser }: GreetingRowProps) {
               Your Roomies
             </p>
             <div className="flex -space-x-3">
-              {roommates.map((roommate) => (
-                <div
-                  key={roommate.id}
-                  className="relative group"
-                  title={roommate.name}
-                >
+              {roommates.map((roommate, idx) => (
+                <div key={idx} className="relative group" title={roommate.name}>
                   <div className="bg-white/90 rounded-full p-2 border-2 border-white shadow-md hover:scale-110 transition-transform">
                     <MascotIllustration
-                      mascot={roommate.mascot}
-                      color={roommate.color}
+                      mascot={(roommate as any).mascot}
+                      color={(roommate as any).color}
                       size={35}
                     />
                   </div>

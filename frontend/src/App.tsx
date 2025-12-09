@@ -222,7 +222,7 @@ export default function App() {
     }
   };
 
-    const handleLogout = async () => {
+  const handleLogout = async () => {
     try {
       await fetch("http://localhost:3000/api/user/logout", {
         method: "POST",
@@ -301,26 +301,79 @@ export default function App() {
 
       const data = await res.json().catch(() => null);
 
-      if (!res.ok || !data?.user) {
-        setError("Failed to save profile. Please try again.");
-      } else {
-        try {
-          if (inviteCode) {
-            if (data.householdName) setHousehold(data.householdName);
-          } else if (data.inviteCode) {
-            const inviteCodeCreated = data.inviteCode;
-            setHouseholdInviteCode(inviteCodeCreated);
-            await sendSessionToServer(merged, householdName, inviteCodeCreated);
-          }
-        } catch (error) {
-          setError("Error processing household data.");
+      if (!res.ok) {
+        // Handle specific error cases
+        if (res.status === 404) {
+          setError("Household not found. Please check invite code.");
+          return;
+        } else if (res.status === 409) {
+          setError("Email already in use.");
+          return;
+        } else if (res.status === 500) {
+          setError("Server error. Please try again.");
+          return;
+        } else {
+          setError(data?.error || "Failed to save profile. Please try again.");
+          return;
         }
       }
-    } catch (error) {
-      setError("Network error. Please check your connection.");
-    } finally {
+
+      if (!data?.user) {
+        setError("Failed to save profile. Please try again.");
+        return;
+      }
+
+      // Update state with response data
+      setCurrentUser(data.user);
+
+      // Handle household data
+      let finalInviteCode = inviteCode || null;
+      let finalHouseholdName = householdName;
+      let finalHouseholdId = data.householdId || null;
+
+      if (inviteCode && data.householdName) {
+        finalHouseholdName = data.householdName;
+        setHousehold(data.householdName);
+      } else if (!inviteCode && data.inviteCode) {
+        finalInviteCode = data.inviteCode;
+        setHouseholdInviteCode(data.inviteCode);
+      }
+
+      // TODO: Display errors in UI
+
+      // If user joined via invite code, finalize household membership
+      if (inviteCode && finalHouseholdId) {
+        try {
+          const finalizeRes = await fetch(
+            "http://localhost:3000/api/user/finalize-household",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: merged.id,
+                householdId: finalHouseholdId,
+              }),
+              mode: "cors",
+              credentials: "include",
+            }
+          );
+
+          if (!finalizeRes.ok) {
+            console.error("Failed to finalize household membership");
+            // Don't block user from proceeding, just log the error
+          }
+        } catch (error) {
+          console.error("Error finalizing household membership:", error);
+          // Don't block user from proceeding
+        }
+      }
+
+      await sendSessionToServer(merged, finalHouseholdName, finalInviteCode);
+
       setScreen("app");
       setLoading(false);
+    } catch (error) {
+      setError("Network error. Please check your connection.");
     }
   };
 

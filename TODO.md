@@ -12,12 +12,10 @@ Notes:
 
 TODO: Add availability checking to onboarding flow (Anotida)
 TODO: Call chore organizin/leaderboard algorithm in backend upon onboarding completion and implement function that will call algorithm again each week (Anotida)
-!! TODO: Ensure user logout actually clears cookies and prevents session restores (Anotida)
 
 TODO: Verify that a user can create and join an existing household (Anotida)
 - adjust the api/user/invite/:code endpoint so that all it does is ensure that when a user is finished onboarding they are added to the proper household
-TODO: Adjust api/user/me enddpoint so that all this does is check if a user already exists (Anotida)
-TODO: Get rid of continue with google on login page and replace with only sign in with google. Authentication screen should only ask about name and email and then users can add their pronouns and birthday in the settings screen
+
 TODO: Implement authentication of emails
 TODO: Add back button to every onboarding step
 
@@ -62,7 +60,8 @@ TODO: Allow user to change add their pronouns, birthday and other information in
 - Also improve UI
 TODO: Replace mock invite code and roomate data with real data
 TODO: Implement notifications
-TODO: Allo
+TODO: Allow for users to delete their account or delete their household
+
 
 
 

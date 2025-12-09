@@ -4,8 +4,12 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 
 interface HouseholdStepProps {
-  // onNext now accepts an optional inviteCode so parent can store it in onboarding state
-  onNext: (householdName: string, inviteCode?: string) => void;
+  onNext: (
+    householdNameOrData:
+      | string
+      | { id: string; name: string; inviteCode: string },
+    inviteCode?: string
+  ) => void;
   onBack?: () => void;
 }
 
@@ -13,40 +17,43 @@ export function HouseholdStep({ onNext, onBack }: HouseholdStepProps) {
   const [mode, setMode] = useState<"create" | "join" | null>(null);
   const [householdName, setHouseholdName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const handleContinue = async () => {
+    setError(null);
+
     if (mode === "create" && householdName) {
-      // Explicitly call with no inviteCode for create flow
       onNext(householdName);
     } else if (mode === "join" && inviteCode) {
+      setLoading(true);
       try {
         const code = inviteCode.trim();
         const res = await fetch(
-          `/api/user/invite/${encodeURIComponent(code)}`,
+          `http://localhost:3000/api/user/invite/${encodeURIComponent(code)}`,
           {
             method: "GET",
             headers: { "Content-Type": "application/json" },
+            mode: "cors",
+            credentials: "include",
           }
         );
 
-        // TODO: better display error messages in UI
         if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          alert(
-            err?.error
-              ? `Invalid invite: ${err.error}`
-              : "Invite code not found"
-          );
+          let err: any = {};
+          setError("Invalid invite code. Please try again.");
+          setLoading(false);
           return;
         }
 
-        // Pass household summary and invite code to parent via onNext
-        const hh = await res.json();
-        onNext(hh.name || "Joined Household", code);
+        const householdData = await res.json();
+        onNext(householdData, code);
       } catch (err) {
-        // TODO: better display error messages in UI
-        console.error("Error joining household:", err);
-        alert("Error joining household");
+        console.error("Error validating invite code:", err);
+        setError(
+          "Network error. Please check your connection and ensure the server is running."
+        );
+        setLoading(false);
       }
     }
   };
@@ -139,29 +146,41 @@ export function HouseholdStep({ onNext, onBack }: HouseholdStepProps) {
             <label className="text-purple-600 mb-2 block">Invite Code</label>
             <Input
               value={inviteCode}
-              onChange={(e) => setInviteCode(e.target.value)}
+              onChange={(e) => {
+                setInviteCode(e.target.value);
+                setError(null);
+              }}
               placeholder="Enter 6-digit code"
               className="bg-white/80 border-purple-200 rounded-2xl text-lg py-6 text-center tracking-widest"
               maxLength={6}
             />
             <p className="text-purple-400 text-sm mt-2">
-              Ask your roommate for the invite code from their settings!
+              Ask your roommate for the invite code from their dashboard!
             </p>
           </div>
+
+          {/* Error Display */}
+          {error && (
+            <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-4">
+              <p className="text-red-600 text-sm text-center">{error}</p>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <Button
               onClick={onBack ? onBack : () => setMode(null)}
               className="flex-1 bg-white hover:bg-purple-50 text-purple-600 border-2 border-purple-200 rounded-2xl py-6"
+              disabled={loading}
             >
               Back
             </Button>
             <Button
               onClick={handleContinue}
-              disabled={inviteCode.length !== 6}
+              disabled={inviteCode.length !== 6 || loading}
               className="flex-1 bg-gradient-to-r from-purple-400 to-pink-400 hover:from-purple-500 hover:to-pink-500 text-white rounded-2xl py-6 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Join Household <ArrowRight className="w-4 h-4 ml-2" />
+              {loading ? "Validating..." : "Join Household"}{" "}
+              <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </div>
         </div>
