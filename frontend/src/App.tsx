@@ -12,6 +12,10 @@ import { LeaderboardScreen } from "./components/leaderboard/LeaderboardScreen";
 import { SettingsScreen } from "./components/settings/SettingsScreen";
 import ErrorToast from "./components/ui/error-toast";
 
+import { UserContext } from './contexts/UserContext';
+import { UserProvider } from './contexts/UserContext';
+
+
 // Types
 export type Mascot = "frog" | "cat" | "bunny" | "bird" | "fox" | "bear";
 export const Mascot = {
@@ -34,6 +38,7 @@ export interface User {
   email?: string;
   password?: string;
   points?: number;
+  householdId?: string; //maybe delete ??
 }
 
 export interface Chore {
@@ -107,6 +112,16 @@ export default function App() {
         }
 
         setCurrentUser(data.user);
+        if (data.user.email) {
+          localStorage.setItem("email", data.user.email.toLowerCase());
+          console.log("Set email in localStorage:", data.user.email.toLowerCase());
+           // Immediately check and log the value
+          console.log("localStorage.getItem('email'):", localStorage.getItem("email"));
+          localStorage.setItem("testkey", "testvalue");
+          console.log(localStorage.getItem("testkey"));
+
+        }
+
         if (data.householdName) setHousehold(data.householdName);
         if (data.inviteCode) setHouseholdInviteCode(data.inviteCode);
         setScreen("app");
@@ -114,6 +129,7 @@ export default function App() {
       } catch (err) {
         if (!cancelled) setLoading(false);
       }
+
     };
 
     restoreSession();
@@ -446,7 +462,8 @@ export default function App() {
               />
             )}
             {activeView === "chores" && <ChoresScreen />}
-            {activeView === "calendar" && <CalendarScreen />}
+            {activeView === "calendar" && (
+            <CalendarScreen householdId={currentUser?.householdId ?? ""}/>)}
             {activeView === "leaderboard" && <LeaderboardScreen />}
             {activeView === "settings" && (
               <SettingsScreen

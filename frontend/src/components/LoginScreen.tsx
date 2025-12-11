@@ -29,6 +29,10 @@ export function LoginScreen({
     if (!email || !password) return setError("Enter email and password");
     setLoading(true);
     try {
+      /// Only store email if not empty
+    if (email.trim() !== "") {
+      localStorage.setItem("email", email.toLowerCase());
+    }
       onLoginComplete(email.toLowerCase(), password);
     } finally {
       setLoading(false);
@@ -41,6 +45,10 @@ export function LoginScreen({
     try {
       const fbUser = await signInWithGoogle();
       if (!fbUser || !fbUser.email) return setError("Google sign-in did not return an email");
+       // Only store email if not empty
+      if (fbUser.email && String(fbUser.email).trim() !== "") {
+      localStorage.setItem("email", String(fbUser.email).toLowerCase());
+    }
       onLoginComplete(String(fbUser.email).toLowerCase());
 
     } catch (e: any) {
@@ -168,7 +176,7 @@ export function LoginScreen({
         </div>
 
         <p className="text-center text-purple-400 text-sm mt-6">
-          Making chores less choreible since 2024 💜
+          Making chores less chore-ible since 2025 💜
         </p>
       </div>
     </div>

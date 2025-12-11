@@ -235,7 +235,6 @@ export async function registerUsers(app: Express) {
   app.get("/api/user/me", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
 
-
     try {
       const email = String(req.query.email || "")
         .trim()
@@ -489,6 +488,210 @@ export async function registerUsers(app: Express) {
     }
   });
 
+// app.get('/api/chores/calendar', async (req: Request, res: Response) => {
+//   // Example: support ?householdId=...&weekOffset=0 or ?householdId=...&month=12
+//   const { householdId, weekOffset, month } = req.query;
+
+//   if (!householdId) {
+//     return res.status(400).json({ error: 'Missing householdId parameter' });
+//   }
+
+//   // TODO: Fetch household document from Firestore
+//   // Example:
+//   // const hhSnap = await firestore.collection("households").doc(String(householdId)).get();
+//   // if (!hhSnap.exists) return res.status(404).json({ error: "Household not found" });
+//   // const hhData = hhSnap.data() || {};
+
+//   // TODO: Filter chores by week or month, and build calendar data structure
+//   // For now, return mock data:
+//   if (weekOffset !== undefined) {
+//     return res.json({
+//       days: [
+//         { date: 1, day: 'Mon', chores: [{ name: 'Trash', mascot: 'cat', color: '#FFB6C1', completed: false, time: '9:00 AM' }] },
+//         // ...more days
+//       ],
+//       stats: { completed: 5, remaining: 2, percent: 71 }
+//     });
+//   } else if (month !== undefined) {
+//     return res.json({
+//       days: [
+//         { date: 1, day: 'Mon', chores: [{ name: 'Dishes', mascot: 'bunny', color: '#A7C7E7', completed: true, time: '10:00 AM' }] },
+//         // ...more days
+//       ],
+//       stats: { completed: 20, remaining: 5, percent: 80 }
+//     });
+//   } else {
+//     return res.status(400).json({ error: 'Missing weekOffset or month parameter' });
+//   }
+// });
+
+
+
+/////////////
+
+  app.get('/api/chores/calendar', async (req: Request, res: Response) => {
+    const { householdId, weekOffset, month } = req.query;
+
+    if (!householdId) {
+      return res.status(400).json({ error: 'Missing householdId parameter' });
+    }
+    if (!firestore) {
+      return res.status(500).json({ error: "Firestore not initialized" });
+    }
+
+    // Fetch household document
+    const hhSnap = await firestore.collection("households").doc(String(householdId)).get();
+    if (!hhSnap.exists) return res.status(404).json({ error: "Household not found" });
+    const hhData = hhSnap.data() || {};
+    const allChores: any[] = Array.isArray(hhData.chores) ? hhData.chores : [];
+
+    
+
+
+    // Filter chores by week or month
+    let filteredChores = allChores;
+
+    //SKIPPING FILTERINF FOR TESTING
+    // if (weekOffset !== undefined) {
+    //   // Calculate start and end of the week
+    //   const now = new Date();
+    //   const offset = Number(weekOffset) || 0;
+    //   const startOfWeek = new Date(now);
+    //   startOfWeek.setDate(now.getDate() - now.getDay() + offset * 7);
+    //   startOfWeek.setHours(0, 0, 0, 0);
+    //   const endOfWeek = new Date(startOfWeek);
+    //   endOfWeek.setDate(startOfWeek.getDate() + 7);
+
+    //   filteredChores = allChores.filter((chore) => {
+    //     if (!chore.dueDate) return false;
+    //     const due = new Date(chore.dueDate);
+    //     return due >= startOfWeek && due < endOfWeek;
+    //   });
+    // } else if (month !== undefined) {
+    //   // Filter by month (1-based)
+    //   const year = new Date().getFullYear();
+    //   const monthNum = Number(month) - 1;
+    //   filteredChores = allChores.filter((chore) => {
+    //     if (!chore.dueDate) return false;
+    //     const due = new Date(chore.dueDate);
+    //     return due.getMonth() === monthNum && due.getFullYear() === year;
+    //   });
+    // }
+
+    // Helper function to get weekday string from date
+    function getWeekday(dateInput: string | Date): string {
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const dateObj = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+      return days[dateObj.getDay()];
+    }
+
+     // Group chores by day
+  const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const daysMap: Record<string, any> = {};
+  filteredChores.forEach(chore => {
+    if (!chore.dueDate) return;
+    const dateObj = new Date(chore.dueDate);
+    const key = `${dateObj.getFullYear()}-${dateObj.getMonth()}-${dateObj.getDate()}`;
+    if (!daysMap[key]) {
+      daysMap[key] = {
+        date: dateObj.getDate(),
+        day: weekDays[dateObj.getDay()],
+        chores: []
+      };
+    }
+    daysMap[key].chores.push({
+      name: chore.name,
+      mascot: chore.mascot,
+      color: chore.color,
+      completed: chore.completed,
+      time: dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    });
+  });
+  const days = Object.values(daysMap);
+
+    // Calculate stats
+    const completed = filteredChores.filter(c => c.completed).length;
+    const remaining = filteredChores.length - completed;
+    const percent = filteredChores.length ? Math.round((completed / filteredChores.length) * 100) : 0;
+
+    return res.json({
+      days,
+      stats: { completed, remaining, percent }
+    });
+
+  });
+
+
+
+  // app.get('/api/chores/calendar', async (req, res) => {
+  //   return res.json({
+  //   days: [
+  //     { date: 1, day: 'Mon', chores: [{ name: 'Trash', mascot: 'cat', color: '#FFB6C1', completed: false, time: '9:00 AM' }] },
+  //     { date: 2, day: 'Tue', chores: [{ name: 'Dishes', mascot: 'bunny', color: '#A7C7E7', completed: true, time: '10:00 AM' }] }
+  //   ],
+  //   stats: { completed: 1, remaining: 1, percent: 50 }
+  // });
+  // });
+
+
+// app.get('/api/chores/calendar', async (req, res) => {
+//   // Place your mock chores array here
+//   const chores = [
+//     {
+//       id: "chore_1",
+//       name: "Take Out Trash",
+//       mascot: "cat",
+//       color: "#FFB6C1",
+//       completed: false,
+//       dueDate: new Date().toISOString(), // today
+//       time: "9:00 AM"
+//     },
+//     {
+//       id: "chore_2",
+//       name: "Wash Dishes",
+//       mascot: "bunny",
+//       color: "#A7C7E7",
+//       completed: true,
+//       dueDate: new Date().toISOString(), // today
+//       time: "10:00 AM"
+//     }
+//     // ...add more chores as needed
+//   ];
+
+//   // Group chores by day
+//   const daysMap: Record<number, { date: number; day: string; chores: any[] }> = {};
+//   chores.forEach((chore) => {
+//     const dateObj = new Date(chore.dueDate);
+//     const date = dateObj.getDate();
+//     const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dateObj.getDay()];
+//     if (!daysMap[date]) {
+//       daysMap[date] = { date, day, chores: [] };
+//     }
+//     daysMap[date].chores.push({
+//       name: chore.name,
+//       mascot: chore.mascot,
+//       color: chore.color,
+//       completed: chore.completed,
+//       time: chore.time
+//     });
+//   });
+
+//   const days = Object.values(daysMap).sort((a, b) => a.date - b.date);
+
+//   // Calculate stats
+//   const completed = chores.filter(c => c.completed).length;
+//   const remaining = chores.length - completed;
+//   const percent = chores.length ? Math.round((completed / chores.length) * 100) : 0;
+
+//   return res.json({
+//     days,
+//     stats: { completed, remaining, percent }
+//   });
+// });
+
+
+
+
   // Create user + household or join existing household
   app.post("/api/user", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
@@ -637,6 +840,8 @@ export async function registerUsers(app: Express) {
       } catch (error) {
         return res.status(500).json({ error: "Failed to create household" });
       }
+
+      await userRef.set({ householdId, householdName }, { merge: true });
 
       try {
         await userRef.set({ householdId, householdName }, { merge: true });
@@ -877,7 +1082,9 @@ export async function registerUsers(app: Express) {
 
       let householdName = householdNameInput;
       let inviteCode = inviteCodeInput;
+      let householdId: string | null = null;
       if (dbUser && dbUser.householdId) {
+        householdId = String(dbUser.householdId);
         try {
           const hhSnap = firestore
             ? await firestore
@@ -898,7 +1105,13 @@ export async function registerUsers(app: Express) {
       setSessionCookies(res, userToStore, householdName, inviteCode);
       return res.json({
         success: true,
-        user: userToStore,
+        // user: userToStore,
+        user: {
+          id: userToStore.id,
+          email: userToStore.email,
+          householdId: userToStore.householdId
+        },
+        householdId,
         householdName,
         inviteCode,
       });

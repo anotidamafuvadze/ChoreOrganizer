@@ -1,7 +1,9 @@
-import { useState, useEffect} from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { MascotIllustration } from '../mascots/MascotIllustration';
 import { Button } from '../ui/button';
+// Import UserContext (adjust path as needed)
+import { useUser } from '../../contexts/UserContext';
 
 
 const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -11,22 +13,23 @@ const mascots = ['cat', 'bunny', 'fox', 'frog', 'cat'] as const;
 
 
 // TODO: Replace the Calendar data on the CalendarScreen with real data fetching from backend
-const calendarData = Array.from({ length: 7 }, (_, i) => ({
-  date: i + 10,
-  day: weekDays[i % 7],
-  chores: i < 5 ? [
-    { 
-      name: ['Trash', 'Dishes', 'Sweep', 'Kitchen', 'Bathroom'][i],
-      mascot: mascots[i],
-      color: ['#FFB6C1', '#A7C7E7', '#E6B8FF', '#FFDAB9', '#FFB6C1'][i],
-      completed: i < 3,
-      time: '9:00 AM'
-    }
-  ] : []
-}));
+// const calendarData = Array.from({ length: 7 }, (_, i) => ({
+//   date: i + 10,
+//   day: weekDays[i % 7],
+//   chores: i < 5 ? [
+//     { 
+//       name: ['Trash', 'Dishes', 'Sweep', 'Kitchen', 'Bathroom'][i],
+//       mascot: mascots[i],
+//       color: ['#FFB6C1', '#A7C7E7', '#E6B8FF', '#FFDAB9', '#FFB6C1'][i],
+//       completed: i < 3,
+//       time: '9:00 AM'
+//     }
+//   ] : []
+// }));
 
 //These TYPES are essential for defining the structure of chore and day data in the CalendarScreen component. 
 import type { Mascot } from '../mascots/MascotIllustration';
+import { UserContext } from '../../contexts/UserContext';
 
 type Chore = {
   name: string;
@@ -48,7 +51,50 @@ type Stats = {
   percent: number;
 };
 
-export function CalendarScreen() {
+type CalendarScreenProps = {
+  householdId: string;
+};
+
+
+//ALWAYS ON GRID
+// Helper to get all days in the current week
+function getWeekDays(baseDate = new Date()) {
+  const start = new Date(baseDate);
+  start.setDate(baseDate.getDate() - baseDate.getDay());
+  start.setHours(0, 0, 0, 0);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return {
+      date: d.getDate(),
+      day: weekDays[d.getDay()],
+      chores: [],
+      fullDate: d,
+    };
+  });
+}
+
+// Helper to get all days in the current month
+function getMonthDays(year: number, month: number) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  return Array.from({ length: daysInMonth }, (_, i) => {
+    const d = new Date(year, month, i + 1);
+    return {
+      date: d.getDate(),
+      day: weekDays[d.getDay()],
+      chores: [],
+      fullDate: d,
+    };
+  });
+}
+
+
+
+
+
+export function CalendarScreen({ householdId }: CalendarScreenProps) {
+  // const { householdId } = useContext(UserContext); 
+  // const { householdId } = useUser();
   const [view, setView] = useState<'week' | 'month'>('week');
   const [filterBy, setFilterBy] = useState<'all' | 'you' | 'roommate'>('all');
   const [currentWeek, setCurrentWeek] = useState(0); // 0 = this week
@@ -59,28 +105,55 @@ export function CalendarScreen() {
   
   //this fetches calendar data from the backend based on the current view (week or month) and 
   // updates the state accordingly
-  useEffect(() => {
-    async function fetchCalendar() {
-      setLoading(true);
-      try {
-        let url = '';
-        if (view === 'week') {
-          url = `/api/chores?weekOffset=${currentWeek}`;
-        } else {
-          url = `/api/chores?month=${currentMonth + 1}`;
-        }
-        const res = await fetch(url);
-        const data = await res.json();
-        setCalendarData(data.days);
-        setStats(data.stats);
-      } catch (e) {
-        setCalendarData([]);
-        setStats({ completed: 0, remaining: 0, percent: 0 });
+
+console.log('householdId:', householdId);
+
+  
+useEffect(() => {
+  async function fetchCalendar() {
+    setLoading(true);
+    try {
+      let url = '';
+      if (view === 'week') {
+        url = `http://localhost:3000/api/chores/calendar?householdId=${householdId}&weekOffset=${currentWeek}`;
+      } else {
+        url = `http://localhost:3000/api/chores/calendar?householdId=${householdId}&month=${currentMonth + 1}`;
       }
-      setLoading(false);
+      const res = await fetch(url);
+      const data = await res.json();
+      setCalendarData(Array.isArray(data.days) ? data.days : []);
+      setStats(data.stats || { completed: 0, remaining: 0, percent: 0 });
+    } catch (e) {
+      setCalendarData([]);
+      setStats({ completed: 0, remaining: 0, percent: 0 });
     }
-    fetchCalendar();
-  }, [currentWeek, currentMonth, view]);
+    setLoading(false);
+  }
+    // Only fetch if householdId is available
+  if (householdId) fetchCalendar();
+}, [currentWeek, currentMonth, view, householdId]);
+
+
+//ALWAYS ON GRID
+  // Always show all days in week/month, fill in chores if present
+  let displayDays: DayData[] = [];
+  if (view === 'week') {
+    const weekDaysArr = getWeekDays();
+    displayDays = weekDaysArr.map(day => {
+      const found = calendarData.find(d => d.date === day.date && d.day === day.day);
+      return found ? found : { ...day, chores: [] };
+    });
+  } else {
+    const year = new Date().getFullYear();
+    const month = currentMonth;
+    const monthDaysArr = getMonthDays(year, month);
+    displayDays = monthDaysArr.map(day => {
+      const found = calendarData.find(d => d.date === day.date && d.day === day.day);
+      return found ? found : { ...day, chores: [] };
+    });
+  }
+
+
 
   function handlePrev() {
     if (view === 'week') {
@@ -141,18 +214,21 @@ const monthName = new Date(new Date().getFullYear(), currentMonth).toLocaleStrin
 
       {/* Calendar Navigation */}
       <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 border border-purple-100/50 shadow-lg flex items-center justify-between">
-        <button className="p-2 hover:bg-purple-100 rounded-xl transition-colors">
+        <button className="p-2 hover:bg-purple-100 rounded-xl transition-colors" 
+        onClick={handlePrev}>
           <ChevronLeft className="w-5 h-5 text-purple-600" />
         </button>
-        <h3 className="text-purple-700">November 2024</h3>
-        <button className="p-2 hover:bg-purple-100 rounded-xl transition-colors">
+        <h3 className="text-purple-700">{monthName} {new Date().getFullYear()}</h3>
+        <button className="p-2 hover:bg-purple-100 rounded-xl transition-colors"
+        onClick={handleNext}>
           {/* TODO: Add/Implement button to navigate to next week or month on the CalendarScreen */}
           <ChevronRight className="w-5 h-5 text-purple-600" /> 
         </button>
       </div>
       {/* TODO: Add a month view and allow toggling between months on the CalendarScreen */}
       {/* Month View */}
-      {view === 'month' && (
+
+      {/* {view === 'month' && (
           <div className="grid grid-cols-7 gap-4">
             {loading ? (
               <div className="col-span-7 text-center text-purple-400">Loading...</div>
@@ -201,81 +277,255 @@ const monthName = new Date(new Date().getFullYear(), currentMonth).toLocaleStrin
               ))
             )}
           </div>
-        )}
+        )} */}
 
-      {/* {view === 'month' && (
-        <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-8 border border-purple-100/50 shadow-lg text-center text-purple-600">
-          Month view coming soon! Stay tuned 📅✨
+
+      {/* Week View */}
+      {/* {view === 'week' && (
+        <div className="grid grid-cols-7 gap-4">
+          {loading ? (
+            <div className="col-span-7 text-center text-purple-400">Loading...</div>
+          ) : calendarData.length === 0 ?(
+            <div className="col-span-7 text-center text-purple-400">No chores scheduled for this week.</div>
+          ) : (
+            calendarData.map((day, index) => {
+              // Determine if this day is today
+              const today = new Date();
+              const isToday =
+                day.date === today.getDate() &&
+                day.day === weekDays[today.getDay()];
+
+              return (
+                <div
+                  key={index}
+                  className={`bg-white/60 backdrop-blur-sm rounded-2xl p-4 border min-h-[280px] ${
+                    isToday
+                      ? 'border-purple-300 shadow-lg'
+                      : 'border-purple-100/50 shadow'
+                  }`}
+                >
+                  <div
+                    className={`text-center mb-4 pb-3 border-b ${
+                      isToday ? 'border-purple-200' : 'border-purple-100'
+                    }`}
+                  >
+                    <p className="text-purple-500 text-xs mb-1">{day.day}</p>
+                    <div
+                      className={`w-10 h-10 rounded-xl mx-auto flex items-center justify-center ${
+                        isToday
+                          ? 'bg-gradient-to-br from-purple-400 to-pink-400 text-white'
+                          : 'bg-purple-50 text-purple-600'
+                      }`}
+                    >
+                      {day.date}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {day.chores.map((chore, choreIndex) => (
+                      <div
+                        key={choreIndex}
+                        className={`p-3 rounded-xl border ${
+                          chore.completed
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-purple-50 border-purple-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <MascotIllustration
+                            mascot={chore.mascot}
+                            color={chore.color}
+                            size={25}
+                          />
+                          {chore.completed && (
+                            <div className="w-4 h-4 bg-green-400 rounded-full flex items-center justify-center ml-auto">
+                              <svg
+                                className="w-3 h-3 text-white"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                        <p
+                          className={`text-xs mb-1 ${
+                            chore.completed
+                              ? 'text-green-700'
+                              : 'text-purple-700'
+                          }`}
+                        >
+                          {chore.name}
+                        </p>
+                        <p className="text-xs text-purple-400">{chore.time}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       )} */}
-
+      {/*ALWAYS ON GRID*/} 
+      {/* Month View */}
+      {view === 'month' && (
+        <div className="grid grid-cols-7 gap-4">
+          {loading ? (
+            <div className="col-span-7 text-center text-purple-400">Loading...</div>
+          ) : (
+            displayDays.map((day, index) => (
+              <div
+                key={index}
+                className="bg-white/60 backdrop-blur-sm rounded-2xl p-4 border min-h-[120px] border-purple-100/50 shadow"
+              >
+                <div className="text-center mb-2 pb-2 border-b border-purple-100">
+                  <p className="text-purple-500 text-xs mb-1">{day.day}</p>
+                  <div className="w-8 h-8 rounded-xl mx-auto flex items-center justify-center bg-purple-50 text-purple-600">
+                    {day.date}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {day.chores.length === 0 ? (
+                    <p className="text-xs text-purple-300 text-center">No chores</p>
+                  ) : (
+                    day.chores.map((chore, choreIndex) => (
+                      <div
+                        key={choreIndex}
+                        className={`p-2 rounded-xl border ${
+                          chore.completed
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-purple-50 border-purple-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <MascotIllustration mascot={chore.mascot} color={chore.color} size={20} />
+                          {chore.completed && (
+                            <div className="w-3 h-3 bg-green-400 rounded-full flex items-center justify-center ml-auto">
+                              <svg className="w-2 h-2 text-white" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                        <p className={`text-xs mb-1 ${
+                          chore.completed ? 'text-green-700' : 'text-purple-700'
+                        }`}>
+                          {chore.name}
+                        </p>
+                        <p className="text-xs text-purple-400">{chore.time}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* Week View */}
       {view === 'week' && (
         <div className="grid grid-cols-7 gap-4">
-          {calendarData.map((day, index) => {
-            const isToday = day.date === 14;
-            
-            return (
-              <div
-                key={index}
-                className={`bg-white/60 backdrop-blur-sm rounded-2xl p-4 border min-h-[280px] ${
-                  isToday
-                    ? 'border-purple-300 shadow-lg'
-                    : 'border-purple-100/50 shadow'
-                }`}
-              >
-                <div className={`text-center mb-4 pb-3 border-b ${
-                  isToday ? 'border-purple-200' : 'border-purple-100'
-                }`}>
-                  <p className="text-purple-500 text-xs mb-1">{day.day}</p>
-                  <div className={`w-10 h-10 rounded-xl mx-auto flex items-center justify-center ${
-                    isToday
-                      ? 'bg-gradient-to-br from-purple-400 to-pink-400 text-white'
-                      : 'bg-purple-50 text-purple-600'
-                  }`}>
-                    {day.date}
-                  </div>
-                </div>
+          {loading ? (
+            <div className="col-span-7 text-center text-purple-400">Loading...</div>
+          ) : (
+            displayDays.map((day, index) => {
+              const today = new Date();
+              const isToday =
+                day.date === today.getDate() &&
+                day.day === weekDays[today.getDay()];
 
-                <div className="space-y-3">
-                  {day.chores.map((chore, choreIndex) => (
+              return (
+                <div
+                  key={index}
+                  className={`bg-white/60 backdrop-blur-sm rounded-2xl p-4 border min-h-[280px] ${
+                    isToday
+                      ? 'border-purple-300 shadow-lg'
+                      : 'border-purple-100/50 shadow'
+                  }`}
+                >
+                  <div
+                    className={`text-center mb-4 pb-3 border-b ${
+                      isToday ? 'border-purple-200' : 'border-purple-100'
+                    }`}
+                  >
+                    <p className="text-purple-500 text-xs mb-1">{day.day}</p>
                     <div
-                      key={choreIndex}
-                      className={`p-3 rounded-xl border ${
-                        chore.completed
-                          ? 'bg-green-50 border-green-200'
-                          : 'bg-purple-50 border-purple-200'
+                      className={`w-10 h-10 rounded-xl mx-auto flex items-center justify-center ${
+                        isToday
+                          ? 'bg-gradient-to-br from-purple-400 to-pink-400 text-white'
+                          : 'bg-purple-50 text-purple-600'
                       }`}
                     >
-                      <div className="flex items-center gap-2 mb-2">
-                        <MascotIllustration 
-                          mascot={chore.mascot} 
-                          color={chore.color} 
-                          size={25}
-                        />
-                        {chore.completed && (
-                          <div className="w-4 h-4 bg-green-400 rounded-full flex items-center justify-center ml-auto">
-                            <svg className="w-3 h-3 text-white" viewBox="0 0 20 20" fill="currentColor">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          </div>
-                        )}
-                      </div>
-                      <p className={`text-xs mb-1 ${
-                        chore.completed ? 'text-green-700' : 'text-purple-700'
-                      }`}>
-                        {chore.name}
-                      </p>
-                      <p className="text-xs text-purple-400">{chore.time}</p>
+                      {day.date}
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="space-y-3">
+                    {day.chores.length === 0 ? (
+                      <p className="text-xs text-purple-300 text-center">No chores</p>
+                    ) : (
+                      day.chores.map((chore, choreIndex) => (
+                        <div
+                          key={choreIndex}
+                          className={`p-3 rounded-xl border ${
+                            chore.completed
+                              ? 'bg-green-50 border-green-200'
+                              : 'bg-purple-50 border-purple-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <MascotIllustration
+                              mascot={chore.mascot}
+                              color={chore.color}
+                              size={25}
+                            />
+                            {chore.completed && (
+                              <div className="w-4 h-4 bg-green-400 rounded-full flex items-center justify-center ml-auto">
+                                <svg
+                                  className="w-3 h-3 text-white"
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                          <p
+                            className={`text-xs mb-1 ${
+                              chore.completed
+                                ? 'text-green-700'
+                                : 'text-purple-700'
+                            }`}
+                          >
+                            {chore.name}
+                          </p>
+                          <p className="text-xs text-purple-400">{chore.time}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       )}
+
+
+
+
 
       {/* Weekly Summary */}
       <div className="bg-gradient-to-br from-green-100 to-teal-100 backdrop-blur-sm rounded-3xl p-8 border border-green-200 shadow-lg">
@@ -293,11 +543,11 @@ const monthName = new Date(new Date().getFullYear(), currentMonth).toLocaleStrin
              {/* TODO: Calculate and display real stats on the weekly summary section of CalendarScreen */}
             <div className="text-center">
               <p className="text-purple-500 text-sm mb-1">Completed</p>
-              <p className="text-purple-700 text-2xl">17</p>
+              <p className="text-purple-700 text-2xl">{stats.completed}</p>
             </div>
             <div className="text-center">
               <p className="text-purple-500 text-sm mb-1">Remaining</p>
-              <p className="text-purple-700 text-2xl">3</p>
+              <p className="text-purple-700 text-2xl">{stats.remaining}</p>
             </div>
           </div>
         </div>
