@@ -168,7 +168,7 @@ export function LoginScreen({
         </div>
 
         <p className="text-center text-purple-400 text-sm mt-6">
-          Making chores less choreible since 2024 💜
+          Making chores less choreible since 2025 💜
         </p>
       </div>
     </div>
