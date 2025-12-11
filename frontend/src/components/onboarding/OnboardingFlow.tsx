@@ -63,17 +63,50 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
     // Conditionally show confirmation step only if joining household
     ...(householdData
       ? [
-          <HouseholdConfirmationStep
-            key="confirmation"
-            householdData={householdData}
-            onConfirm={() => setStep(3)}
-            onBack={() => {
-              setHouseholdData(null);
-              setInviteCode(null);
-              setStep(1);
-            }}
-          />,
-        ]
+        <HouseholdConfirmationStep
+          key="confirmation"
+          householdData={householdData}
+          onConfirm={async () => {
+            try {
+              const id = householdData.id;
+              const res = await fetch(
+                `http://localhost:3000/api/household/${encodeURIComponent(
+                  String(id)
+                )}`,
+                {
+                  method: "GET",
+                  mode: "cors",
+                  credentials: "include",
+                }
+              );
+              if (res.ok) {
+                const hh = await res.json().catch(() => null);
+                const choresFromApi = Array.isArray(hh?.chores)
+                  ? hh.chores
+                  : [];
+                const mapped = choresFromApi.map((c: any) => ({
+                  name: c.name || String(c.id || ""),
+                  frequency: c.frequency || c.freq || "weekly",
+                }));
+                setSelectedChores(mapped);
+              } else {
+                // if fetch fails, ensure we don't block onboarding — continue with empty chores
+                setSelectedChores([]);
+              }
+            } catch (e) {
+              setSelectedChores([]);
+            } finally {
+              // PreferencesStep index is 4 when householdData is present
+              setStep(4);
+            }
+          }}
+          onBack={() => {
+            setHouseholdData(null);
+            setInviteCode(null);
+            setStep(1);
+          }}
+        />,
+      ]
       : []),
     <ChoresStep
       key="chores"
@@ -162,13 +195,12 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         {steps.map((_, index) => (
           <div
             key={index}
-            className={`h-2 rounded-full transition-all ${
-              index === step
+            className={`h-2 rounded-full transition-all ${index === step
                 ? "w-8 bg-purple-400"
                 : index < step
-                ? "w-2 bg-purple-300"
-                : "w-2 bg-purple-200"
-            }`}
+                  ? "w-2 bg-purple-300"
+                  : "w-2 bg-purple-200"
+              }`}
           />
         ))}
       </div>

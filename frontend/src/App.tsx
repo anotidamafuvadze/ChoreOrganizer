@@ -374,6 +374,7 @@ export default function App() {
       setScreen("app");
       setLoading(false);
     } catch (error) {
+      console.log(error)
       setError("Network error. Please check your connection.");
     }
   };

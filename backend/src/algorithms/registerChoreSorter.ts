@@ -264,6 +264,7 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
 }
 
 app.post("/assign-chores", async (req: Request, res: Response) => {
+    console.log("i've been called")
     const { household, householdId } = req.body;
     try {
         // Resolve household object (either passed in or fetch by id)
@@ -271,12 +272,14 @@ app.post("/assign-chores", async (req: Request, res: Response) => {
         if (!hh && householdId) {
             const fetched = await fetchHouseholdFromFirestore(String(householdId));
             if (!fetched) {
+                console.log("changing res status to 404")
                 return res.status(404).json({ success: false, error: "Household not found" });
             }
             hh = fetched;
         }
 
         if (!hh) {
+            console.log("changing res status to 400")
             return res.status(400).json({ success: false, error: "missing household or householdId" });
         }
 
@@ -296,7 +299,9 @@ app.post("/assign-chores", async (req: Request, res: Response) => {
             flowResult,
             assignmentResult
         });
+
     } catch (err: any) {
+        console.log("changing res status to 500")
         return res.status(500).json({ success: false, error: err.message });
     }
 });

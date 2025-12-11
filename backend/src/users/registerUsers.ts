@@ -175,10 +175,10 @@ async function resolveRoommatesDetails(hhData: any): Promise<
       .map((s) =>
         s.exists
           ? {
-              name: ((s.data() || {}).name ?? null) as string | null,
-              mascot: ((s.data() || {}).mascot ?? null) as string | null,
-              color: ((s.data() || {}).color ?? null) as string | null,
-            }
+            name: ((s.data() || {}).name ?? null) as string | null,
+            mascot: ((s.data() || {}).mascot ?? null) as string | null,
+            color: ((s.data() || {}).color ?? null) as string | null,
+          }
           : null
       )
       .filter(Boolean)
@@ -1086,9 +1086,34 @@ export async function registerUsers(app: Express) {
     }
   });
 
-/**
- * BEGINNNING OF ENDPOINT THAT MIGHT BE DELETED
- */
+  // New endpoint: get household by id (returns name, inviteCode, chores)
+  app.get("/api/household/:id", async (req: Request, res: Response) => {
+    try {
+      const householdId = String(req.params.id || "").trim();
+      if (!householdId) return res.status(400).json({ error: "Missing household id" });
+      if (!firestore) return res.status(500).json({ error: "Firestore not initialized" });
+
+      const hhSnap = await firestore.collection("households").doc(householdId).get();
+      if (!hhSnap.exists) return res.status(404).json({ error: "Household not found" });
+
+      const hhData = hhSnap.data() || {};
+      // Return chores and basic household info. Keep shape lightweight.
+      const chores = Array.isArray(hhData.chores) ? hhData.chores : [];
+      return res.json({
+        householdId: hhSnap.id,
+        name: hhData.name || null,
+        inviteCode: hhData.inviteCode || null,
+        chores,
+      });
+    } catch (error) {
+      console.error("Failed to fetch household:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  /**
+   * BEGINNNING OF ENDPOINT THAT MIGHT BE DELETED
+   */
   // GET household fairness (aggregates chore.points by assignee and returns per-user scores + fairness)
   app.get("/api/household/fairness", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;

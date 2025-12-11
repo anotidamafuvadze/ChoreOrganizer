@@ -151,7 +151,7 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
     identifier?: string;
     count?: number;
     householdName?: string;
-    lastError?: string;
+    lastError?: string | null;
   } | null>(null);
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [confettiId, setConfettiId] = useState<string | null>(null);
@@ -282,14 +282,6 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
           <p className="text-purple-500 text-sm">
             {completed} of {chores.length} complete • Nice work! 🎉
           </p>
-
-          {debugInfo && (
-            <div className="text-xs text-gray-500 mt-2">
-              <div>Identifier: {debugInfo.identifier}</div>
-              <div>Household: {debugInfo.householdName ?? "(none)"}</div>
-              <div>Chores returned: {debugInfo.count}</div>
-            </div>
-          )}
         </div>
       </div>
 
