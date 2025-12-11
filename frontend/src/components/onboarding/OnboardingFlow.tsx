@@ -149,6 +149,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
         const generatedId =
           (authData && authData.method === "google" && authData.fbUser?.uid) ||
           `u-${Date.now()}`;
+          console.log(generatedId)
 
         const user: User = {
           id: generatedId as string,
