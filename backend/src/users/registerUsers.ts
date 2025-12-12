@@ -8,7 +8,7 @@ import {
   makeInviteCode,
 } from "./helperFunctions";
 
-// TODO: Break some of this up into smaller files 
+// TODO: Break some of this up into smaller files
 
 // Helper to validate required fields for creating a user + household
 function validateCreateUserRequest(body: any) {
@@ -66,7 +66,6 @@ export function validateLoginRequest(body: any) {
   if (!email) {
     return { ok: false, error: "Missing email" };
   }
-
 
   if (!authProvider && !password) {
     return { ok: false, error: "Missing password for email login" };
@@ -126,25 +125,30 @@ async function initCollectionsIfNeeded(res: Response): Promise<boolean> {
   }
 }
 
-
 async function resolveRoommateNames(hhData: any): Promise<string[]> {
   try {
     if (!firestore) return [];
     const rawUsers = Array.isArray(hhData?.users) ? hhData.users : [];
     const userIds = rawUsers
       .map((u: any) =>
-        typeof u === "string" ? u : u && (u.id || u.userId) ? String(u.id ?? u.userId) : null
+        typeof u === "string"
+          ? u
+          : u && (u.id || u.userId)
+          ? String(u.id ?? u.userId)
+          : null
       )
       .filter(Boolean) as string[];
 
     if (userIds.length === 0) return [];
 
     const snaps = await Promise.all(
-      userIds.map((uid) => firestore!.collection("users").doc(String(uid)).get())
+      userIds.map((uid) =>
+        firestore!.collection("users").doc(String(uid)).get()
+      )
     );
 
     const names = snaps
-      .map((s) => (s.exists ? ((s.data() || {}).name ?? null) : null))
+      .map((s) => (s.exists ? (s.data() || {}).name ?? null : null))
       .filter(Boolean) as string[];
 
     return names;
@@ -153,36 +157,48 @@ async function resolveRoommateNames(hhData: any): Promise<string[]> {
   }
 }
 
-async function resolveRoommatesDetails(hhData: any): Promise<
-  { name: string; mascot?: string | null; color?: string | null }[]
-> {
+async function resolveRoommatesDetails(
+  hhData: any
+): Promise<{ name: string; mascot?: string | null; color?: string | null }[]> {
   try {
     if (!firestore) return [];
     const rawUsers = Array.isArray(hhData?.users) ? hhData.users : [];
     const userIds = rawUsers
       .map((u: any) =>
-        typeof u === "string" ? u : u && (u.id || u.userId) ? String(u.id ?? u.userId) : null
+        typeof u === "string"
+          ? u
+          : u && (u.id || u.userId)
+          ? String(u.id ?? u.userId)
+          : null
       )
       .filter(Boolean) as string[];
 
     if (userIds.length === 0) return [];
 
     const snaps = await Promise.all(
-      userIds.map((uid) => firestore!.collection("users").doc(String(uid)).get())
+      userIds.map((uid) =>
+        firestore!.collection("users").doc(String(uid)).get()
+      )
     );
 
     return snaps
       .map((s) =>
         s.exists
           ? {
-            name: ((s.data() || {}).name ?? null) as string | null,
-            mascot: ((s.data() || {}).mascot ?? null) as string | null,
-            color: ((s.data() || {}).color ?? null) as string | null,
-          }
+              id: s.id,
+              name: ((s.data() || {}).name ?? null) as string | null,
+              mascot: ((s.data() || {}).mascot ?? null) as string | null,
+              color: ((s.data() || {}).color ?? null) as string | null,
+            }
           : null
       )
       .filter(Boolean)
-      .map((r: any) => ({ name: String(r.name || ""), mascot: r.mascot, color: r.color }));
+      .map((r: any) => ({
+        id: String(r.id || ""),
+        name: String(r.name || ""),
+        mascot: r.mascot,
+        color: r.color,
+      }));
   } catch (e) {
     return [];
   }
@@ -488,65 +504,64 @@ export async function registerUsers(app: Express) {
     }
   });
 
-// app.get('/api/chores/calendar', async (req: Request, res: Response) => {
-//   // Example: support ?householdId=...&weekOffset=0 or ?householdId=...&month=12
-//   const { householdId, weekOffset, month } = req.query;
+  // app.get('/api/chores/calendar', async (req: Request, res: Response) => {
+  //   // Example: support ?householdId=...&weekOffset=0 or ?householdId=...&month=12
+  //   const { householdId, weekOffset, month } = req.query;
 
-//   if (!householdId) {
-//     return res.status(400).json({ error: 'Missing householdId parameter' });
-//   }
+  //   if (!householdId) {
+  //     return res.status(400).json({ error: 'Missing householdId parameter' });
+  //   }
 
-//   // TODO: Fetch household document from Firestore
-//   // Example:
-//   // const hhSnap = await firestore.collection("households").doc(String(householdId)).get();
-//   // if (!hhSnap.exists) return res.status(404).json({ error: "Household not found" });
-//   // const hhData = hhSnap.data() || {};
+  //   // TODO: Fetch household document from Firestore
+  //   // Example:
+  //   // const hhSnap = await firestore.collection("households").doc(String(householdId)).get();
+  //   // if (!hhSnap.exists) return res.status(404).json({ error: "Household not found" });
+  //   // const hhData = hhSnap.data() || {};
 
-//   // TODO: Filter chores by week or month, and build calendar data structure
-//   // For now, return mock data:
-//   if (weekOffset !== undefined) {
-//     return res.json({
-//       days: [
-//         { date: 1, day: 'Mon', chores: [{ name: 'Trash', mascot: 'cat', color: '#FFB6C1', completed: false, time: '9:00 AM' }] },
-//         // ...more days
-//       ],
-//       stats: { completed: 5, remaining: 2, percent: 71 }
-//     });
-//   } else if (month !== undefined) {
-//     return res.json({
-//       days: [
-//         { date: 1, day: 'Mon', chores: [{ name: 'Dishes', mascot: 'bunny', color: '#A7C7E7', completed: true, time: '10:00 AM' }] },
-//         // ...more days
-//       ],
-//       stats: { completed: 20, remaining: 5, percent: 80 }
-//     });
-//   } else {
-//     return res.status(400).json({ error: 'Missing weekOffset or month parameter' });
-//   }
-// });
+  //   // TODO: Filter chores by week or month, and build calendar data structure
+  //   // For now, return mock data:
+  //   if (weekOffset !== undefined) {
+  //     return res.json({
+  //       days: [
+  //         { date: 1, day: 'Mon', chores: [{ name: 'Trash', mascot: 'cat', color: '#FFB6C1', completed: false, time: '9:00 AM' }] },
+  //         // ...more days
+  //       ],
+  //       stats: { completed: 5, remaining: 2, percent: 71 }
+  //     });
+  //   } else if (month !== undefined) {
+  //     return res.json({
+  //       days: [
+  //         { date: 1, day: 'Mon', chores: [{ name: 'Dishes', mascot: 'bunny', color: '#A7C7E7', completed: true, time: '10:00 AM' }] },
+  //         // ...more days
+  //       ],
+  //       stats: { completed: 20, remaining: 5, percent: 80 }
+  //     });
+  //   } else {
+  //     return res.status(400).json({ error: 'Missing weekOffset or month parameter' });
+  //   }
+  // });
 
+  /////////////
 
-
-/////////////
-
-  app.get('/api/chores/calendar', async (req: Request, res: Response) => {
+  app.get("/api/chores/calendar", async (req: Request, res: Response) => {
     const { householdId, weekOffset, month } = req.query;
 
     if (!householdId) {
-      return res.status(400).json({ error: 'Missing householdId parameter' });
+      return res.status(400).json({ error: "Missing householdId parameter" });
     }
     if (!firestore) {
       return res.status(500).json({ error: "Firestore not initialized" });
     }
 
     // Fetch household document
-    const hhSnap = await firestore.collection("households").doc(String(householdId)).get();
-    if (!hhSnap.exists) return res.status(404).json({ error: "Household not found" });
+    const hhSnap = await firestore
+      .collection("households")
+      .doc(String(householdId))
+      .get();
+    if (!hhSnap.exists)
+      return res.status(404).json({ error: "Household not found" });
     const hhData = hhSnap.data() || {};
     const allChores: any[] = Array.isArray(hhData.chores) ? hhData.chores : [];
-
-    
-
 
     // Filter chores by week or month
     let filteredChores = allChores;
@@ -581,47 +596,50 @@ export async function registerUsers(app: Express) {
     // Helper function to get weekday string from date
     function getWeekday(dateInput: string | Date): string {
       const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      const dateObj = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+      const dateObj =
+        typeof dateInput === "string" ? new Date(dateInput) : dateInput;
       return days[dateObj.getDay()];
     }
 
-     // Group chores by day
-  const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const daysMap: Record<string, any> = {};
-  filteredChores.forEach(chore => {
-    if (!chore.dueDate) return;
-    const dateObj = new Date(chore.dueDate);
-    const key = `${dateObj.getFullYear()}-${dateObj.getMonth()}-${dateObj.getDate()}`;
-    if (!daysMap[key]) {
-      daysMap[key] = {
-        date: dateObj.getDate(),
-        day: weekDays[dateObj.getDay()],
-        chores: []
-      };
-    }
-    daysMap[key].chores.push({
-      name: chore.name,
-      mascot: chore.mascot,
-      color: chore.color,
-      completed: chore.completed,
-      time: dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    // Group chores by day
+    const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const daysMap: Record<string, any> = {};
+    filteredChores.forEach((chore) => {
+      if (!chore.dueDate) return;
+      const dateObj = new Date(chore.dueDate);
+      const key = `${dateObj.getFullYear()}-${dateObj.getMonth()}-${dateObj.getDate()}`;
+      if (!daysMap[key]) {
+        daysMap[key] = {
+          date: dateObj.getDate(),
+          day: weekDays[dateObj.getDay()],
+          chores: [],
+        };
+      }
+      daysMap[key].chores.push({
+        name: chore.name,
+        mascot: chore.mascot,
+        color: chore.color,
+        completed: chore.completed,
+        time: dateObj.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      });
     });
-  });
-  const days = Object.values(daysMap);
+    const days = Object.values(daysMap);
 
     // Calculate stats
-    const completed = filteredChores.filter(c => c.completed).length;
+    const completed = filteredChores.filter((c) => c.completed).length;
     const remaining = filteredChores.length - completed;
-    const percent = filteredChores.length ? Math.round((completed / filteredChores.length) * 100) : 0;
+    const percent = filteredChores.length
+      ? Math.round((completed / filteredChores.length) * 100)
+      : 0;
 
     return res.json({
       days,
-      stats: { completed, remaining, percent }
+      stats: { completed, remaining, percent },
     });
-
   });
-
-
 
   // app.get('/api/chores/calendar', async (req, res) => {
   //   return res.json({
@@ -633,64 +651,60 @@ export async function registerUsers(app: Express) {
   // });
   // });
 
+  // app.get('/api/chores/calendar', async (req, res) => {
+  //   // Place your mock chores array here
+  //   const chores = [
+  //     {
+  //       id: "chore_1",
+  //       name: "Take Out Trash",
+  //       mascot: "cat",
+  //       color: "#FFB6C1",
+  //       completed: false,
+  //       dueDate: new Date().toISOString(), // today
+  //       time: "9:00 AM"
+  //     },
+  //     {
+  //       id: "chore_2",
+  //       name: "Wash Dishes",
+  //       mascot: "bunny",
+  //       color: "#A7C7E7",
+  //       completed: true,
+  //       dueDate: new Date().toISOString(), // today
+  //       time: "10:00 AM"
+  //     }
+  //     // ...add more chores as needed
+  //   ];
 
-// app.get('/api/chores/calendar', async (req, res) => {
-//   // Place your mock chores array here
-//   const chores = [
-//     {
-//       id: "chore_1",
-//       name: "Take Out Trash",
-//       mascot: "cat",
-//       color: "#FFB6C1",
-//       completed: false,
-//       dueDate: new Date().toISOString(), // today
-//       time: "9:00 AM"
-//     },
-//     {
-//       id: "chore_2",
-//       name: "Wash Dishes",
-//       mascot: "bunny",
-//       color: "#A7C7E7",
-//       completed: true,
-//       dueDate: new Date().toISOString(), // today
-//       time: "10:00 AM"
-//     }
-//     // ...add more chores as needed
-//   ];
+  //   // Group chores by day
+  //   const daysMap: Record<number, { date: number; day: string; chores: any[] }> = {};
+  //   chores.forEach((chore) => {
+  //     const dateObj = new Date(chore.dueDate);
+  //     const date = dateObj.getDate();
+  //     const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dateObj.getDay()];
+  //     if (!daysMap[date]) {
+  //       daysMap[date] = { date, day, chores: [] };
+  //     }
+  //     daysMap[date].chores.push({
+  //       name: chore.name,
+  //       mascot: chore.mascot,
+  //       color: chore.color,
+  //       completed: chore.completed,
+  //       time: chore.time
+  //     });
+  //   });
 
-//   // Group chores by day
-//   const daysMap: Record<number, { date: number; day: string; chores: any[] }> = {};
-//   chores.forEach((chore) => {
-//     const dateObj = new Date(chore.dueDate);
-//     const date = dateObj.getDate();
-//     const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dateObj.getDay()];
-//     if (!daysMap[date]) {
-//       daysMap[date] = { date, day, chores: [] };
-//     }
-//     daysMap[date].chores.push({
-//       name: chore.name,
-//       mascot: chore.mascot,
-//       color: chore.color,
-//       completed: chore.completed,
-//       time: chore.time
-//     });
-//   });
+  //   const days = Object.values(daysMap).sort((a, b) => a.date - b.date);
 
-//   const days = Object.values(daysMap).sort((a, b) => a.date - b.date);
+  //   // Calculate stats
+  //   const completed = chores.filter(c => c.completed).length;
+  //   const remaining = chores.length - completed;
+  //   const percent = chores.length ? Math.round((completed / chores.length) * 100) : 0;
 
-//   // Calculate stats
-//   const completed = chores.filter(c => c.completed).length;
-//   const remaining = chores.length - completed;
-//   const percent = chores.length ? Math.round((completed / chores.length) * 100) : 0;
-
-//   return res.json({
-//     days,
-//     stats: { completed, remaining, percent }
-//   });
-// });
-
-
-
+  //   return res.json({
+  //     days,
+  //     stats: { completed, remaining, percent }
+  //   });
+  // });
 
   // Create user + household or join existing household
   app.post("/api/user", async (req: Request, res: Response) => {
@@ -872,7 +886,6 @@ export async function registerUsers(app: Express) {
   app.post("/api/user/login", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
 
-
     try {
       const validated = validateLoginRequest(req.body);
       if (!validated.ok) {
@@ -975,7 +988,6 @@ export async function registerUsers(app: Express) {
     }
   });
 
-
   function setSessionCookies(
     res: Response,
     user: any,
@@ -1038,7 +1050,6 @@ export async function registerUsers(app: Express) {
     try {
       if (!firestore) return null;
 
-
       const id = candidate?.id || candidate?.userId || null;
       if (id) {
         const snap = await firestore.collection("users").doc(String(id)).get();
@@ -1088,9 +1099,9 @@ export async function registerUsers(app: Express) {
         try {
           const hhSnap = firestore
             ? await firestore
-              .collection("households")
-              .doc(String(dbUser.householdId))
-              .get()
+                .collection("households")
+                .doc(String(dbUser.householdId))
+                .get()
             : ({ exists: false } as any);
           if (hhSnap.exists) {
             const hhData = hhSnap.data() || {};
@@ -1109,7 +1120,7 @@ export async function registerUsers(app: Express) {
         user: {
           id: userToStore.id,
           email: userToStore.email,
-          householdId: userToStore.householdId
+          householdId: userToStore.householdId,
         },
         householdId,
         householdName,
@@ -1125,7 +1136,6 @@ export async function registerUsers(app: Express) {
   // Get session
   app.get("/api/session", async (req: Request, res: Response) => {
     if (!(await initCollectionsIfNeeded(res))) return;
-
 
     try {
       const rawUserCookie = readCookie(req, "chore_user");
@@ -1208,121 +1218,352 @@ export async function registerUsers(app: Express) {
   });
 
   // Finalize household membership (add user to household users array and merge chores)
-  app.post("/api/user/finalize-household", async (req: Request, res: Response) => {
-    if (!(await initCollectionsIfNeeded(res))) return;
+  app.post(
+    "/api/user/finalize-household",
+    async (req: Request, res: Response) => {
+      if (!(await initCollectionsIfNeeded(res))) return;
 
-    try {
-      const userId = String(req.body.userId || "").trim();
-      const householdId = String(req.body.householdId || "").trim();
-
-      if (!userId) {
-        return res.status(400).json({ error: "Missing userId" });
-      }
-      if (!householdId) {
-        return res.status(400).json({ error: "Missing householdId" });
-      }
-      if (!firestore) {
-        return res.status(500).json({ error: "Firestore not initialized" });
-      }
-
-      // Get user document
-      const userRef = firestore.collection("users").doc(userId);
-      const userSnap = await userRef.get();
-      if (!userSnap.exists) {
-        return res.status(404).json({ error: "User not found" });
-      }
-
-      const userData = userSnap.data() || {};
-      const userChores = Array.isArray(userData.chores) ? userData.chores : [];
-
-      // Get household document
-      const hhRef = firestore.collection("households").doc(householdId);
-      const hhSnap = await hhRef.get();
-      if (!hhSnap.exists) {
-        return res.status(404).json({ error: "Household not found" });
-      }
-
-      const hhData = hhSnap.data() || {};
-      let householdUsers: string[] = Array.isArray(hhData.users)
-        ? hhData.users.map(String)
-        : [];
-      let householdChores: any[] = Array.isArray(hhData.chores) ? hhData.chores : [];
-
-      // Add user to household users array if not already present
-      if (!householdUsers.includes(userId)) {
-        householdUsers.push(userId);
-      }
-
-      // Convert user's chores to household chores format and add them
-      const newChores = clientChoresToHouseholdChores(userChores, [userId]);
-      householdChores = [...householdChores, ...newChores];
-
-      // Update household document
       try {
-        await hhRef.update({
-          users: householdUsers,
-          chores: householdChores,
-        });
-      } catch (error) {
-        return res.status(500).json({ error: "Failed to update household" });
-      }
+        const userId = String(req.body.userId || "").trim();
+        const householdId = String(req.body.householdId || "").trim();
 
-      return res.json({
-        success: true,
-        householdId,
-        message: "User successfully added to household",
-      });
-    } catch (error: any) {
-      return res.status(500).json({
-        error: error?.message || "Failed to finalize household membership",
-      });
+        if (!userId) {
+          return res.status(400).json({ error: "Missing userId" });
+        }
+        if (!householdId) {
+          return res.status(400).json({ error: "Missing householdId" });
+        }
+        if (!firestore) {
+          return res.status(500).json({ error: "Firestore not initialized" });
+        }
+
+        // Get user document
+        const userRef = firestore.collection("users").doc(userId);
+        const userSnap = await userRef.get();
+        if (!userSnap.exists) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        const userData = userSnap.data() || {};
+        const userChores = Array.isArray(userData.chores)
+          ? userData.chores
+          : [];
+
+        // Get household document
+        const hhRef = firestore.collection("households").doc(householdId);
+        const hhSnap = await hhRef.get();
+        if (!hhSnap.exists) {
+          return res.status(404).json({ error: "Household not found" });
+        }
+
+        const hhData = hhSnap.data() || {};
+        let householdUsers: string[] = Array.isArray(hhData.users)
+          ? hhData.users.map(String)
+          : [];
+        let householdChores: any[] = Array.isArray(hhData.chores)
+          ? hhData.chores
+          : [];
+
+        // Deduplicate household chores by id to guard against repeated finalize calls
+        if (householdChores.length > 1) {
+          const byId = new Map<string, any>();
+          for (const c of householdChores) {
+            if (!c) continue;
+            const id = String(c.id ?? c._id ?? Math.random());
+            if (!byId.has(id)) byId.set(id, c);
+          }
+          householdChores = Array.from(byId.values());
+        }
+
+        // Add user to household users array if not already present
+        if (!householdUsers.includes(userId)) {
+          householdUsers.push(userId);
+        }
+
+        // If the household already has chores, the joiner should inherit the
+        // existing household chores instead of appending a new set. Only
+        // convert and add the user's chosen chores when the household has no
+        // chores yet (i.e., this is the household bootstrap case).
+        if (Array.isArray(householdChores) && householdChores.length > 0) {
+          // Rebalance assignments across household users so each chore is
+          // assigned to exactly one roommate. This avoids assigning the same
+          // chore to multiple users when someone joins.
+          try {
+            const usersForAssign = householdUsers.slice();
+            const count = usersForAssign.length || 1;
+
+            const rebalanced = householdChores.map((c: any, idx: number) => {
+              const chore = { ...(c || {}) };
+              const assignee = String(usersForAssign[idx % count]);
+              // assign as single id (keep backwards compatibility with string)
+              chore.assignedTo = assignee;
+              return chore;
+            });
+
+            // Persist both users array and rebalanced chores
+            await hhRef.update({ users: householdUsers, chores: rebalanced });
+          } catch (error) {
+            return res
+              .status(500)
+              .json({ error: "Failed to update household" });
+          }
+
+          // Clear the user's personal chores array to avoid duplication; UI
+          // will read household chores (via `/api/chores`).
+          try {
+            await userRef.set(
+              { householdId, householdName: hhData.name || null, chores: [] },
+              { merge: true }
+            );
+          } catch (error) {
+            return res
+              .status(500)
+              .json({ error: "Failed to update user household info" });
+          }
+        } else {
+          // Household has no chores yet: convert user's chores and add them.
+          const newChores = clientChoresToHouseholdChores(userChores, [userId]);
+          householdChores = [...householdChores, ...newChores];
+
+          // Deduplicate again after merging
+          if (householdChores.length > 1) {
+            const byId = new Map<string, any>();
+            for (const c of householdChores) {
+              if (!c) continue;
+              const id = String(c.id ?? c._id ?? Math.random());
+              if (!byId.has(id)) byId.set(id, c);
+            }
+            householdChores = Array.from(byId.values());
+          }
+
+          // Update household document with chores and users
+          try {
+            await hhRef.update({
+              users: householdUsers,
+              chores: householdChores,
+            });
+          } catch (error) {
+            return res
+              .status(500)
+              .json({ error: "Failed to update household" });
+          }
+        }
+
+        return res.json({
+          success: true,
+          householdId,
+          message: "User successfully added to household",
+        });
+      } catch (error: any) {
+        return res.status(500).json({
+          error: error?.message || "Failed to finalize household membership",
+        });
+      }
     }
-  });
+  );
 
   // New endpoint: get roommate details for a household by id
-  app.get("/api/household/:id/roommates", async (req: Request, res: Response) => {
-    try {
-      const householdId = String(req.params.id || "").trim();
-      if (!householdId) return res.status(400).json({ error: "Missing household id" });
-      if (!firestore) return res.status(500).json({ error: "Firestore not initialized" });
+  app.get(
+    "/api/household/:id/roommates",
+    async (req: Request, res: Response) => {
+      try {
+        const householdId = String(req.params.id || "").trim();
+        if (!householdId)
+          return res.status(400).json({ error: "Missing household id" });
+        if (!firestore)
+          return res.status(500).json({ error: "Firestore not initialized" });
 
-      const hhSnap = await firestore.collection("households").doc(householdId).get();
-      if (!hhSnap.exists) return res.status(404).json({ error: "Household not found" });
+        const hhSnap = await firestore
+          .collection("households")
+          .doc(householdId)
+          .get();
+        if (!hhSnap.exists)
+          return res.status(404).json({ error: "Household not found" });
 
-      const hhData = hhSnap.data() || {};
-      const roommates = await resolveRoommatesDetails(hhData);
+        const hhData = hhSnap.data() || {};
+        const roommates = await resolveRoommatesDetails(hhData);
 
-      return res.json({ householdId: hhSnap.id, roommates });
-    } catch (error) {
-      console.error("Failed to fetch roommates:", error);
-      return res.status(500).json({ error: "Internal server error" });
+        return res.json({ householdId: hhSnap.id, roommates });
+      } catch (error) {
+        console.error("Failed to fetch roommates:", error);
+        return res.status(500).json({ error: "Internal server error" });
+      }
     }
-  });
+  );
 
   // New endpoint: get household by id (returns name, inviteCode, chores)
   app.get("/api/household/:id", async (req: Request, res: Response) => {
     try {
       const householdId = String(req.params.id || "").trim();
-      if (!householdId) return res.status(400).json({ error: "Missing household id" });
-      if (!firestore) return res.status(500).json({ error: "Firestore not initialized" });
+      if (!householdId)
+        return res.status(400).json({ error: "Missing household id" });
+      if (!firestore)
+        return res.status(500).json({ error: "Firestore not initialized" });
 
-      const hhSnap = await firestore.collection("households").doc(householdId).get();
-      if (!hhSnap.exists) return res.status(404).json({ error: "Household not found" });
+      const hhSnap = await firestore
+        .collection("households")
+        .doc(householdId)
+        .get();
+      if (!hhSnap.exists)
+        return res.status(404).json({ error: "Household not found" });
 
       const hhData = hhSnap.data() || {};
-      // Return chores and basic household info. Keep shape lightweight.
-      const chores = Array.isArray(hhData.chores) ? hhData.chores : [];
+
+      // If it's been more than 7 days since chores were last reassigned,
+      // automatically rebalance assignments (round-robin) so households get
+      // a weekly rotation. This keeps members' dashboards consistent.
+      const hhRef = firestore.collection("households").doc(householdId);
+      let chores = Array.isArray(hhData.chores) ? hhData.chores : [];
+      try {
+        const last = hhData.lastReassignedAt
+          ? Date.parse(String(hhData.lastReassignedAt))
+          : 0;
+        const now = Date.now();
+        const sevenDays = 7 * 24 * 60 * 60 * 1000;
+        if (!last || now - last > sevenDays) {
+          // Determine household users for assignment
+          let householdUsers: string[] = Array.isArray(hhData.users)
+            ? hhData.users.map(String)
+            : [];
+          if (householdUsers.length === 0) {
+            const snaps = await firestore
+              .collection("users")
+              .where("householdId", "==", householdId)
+              .get();
+            householdUsers = snaps.docs.map((d) => d.id);
+          }
+
+          if (householdUsers.length > 0 && chores.length > 0) {
+            const count = householdUsers.length;
+            const rebalanced = chores.map((c: any, idx: number) => {
+              const chore = { ...(c || {}) };
+              chore.assignedTo = String(householdUsers[idx % count]);
+              return chore;
+            });
+            chores = rebalanced;
+            // persist updated chores and timestamp
+            try {
+              await hhRef.update({
+                chores: rebalanced,
+                lastReassignedAt: new Date().toISOString(),
+              });
+            } catch (e) {
+              // ignore persistence errors here but keep returning rebalanced chores
+              console.warn("Failed to persist auto-reassigned chores:", e);
+            }
+          }
+        }
+      } catch (e) {
+        // ignore auto-reassign errors
+      }
+
+      const roommates = await resolveRoommatesDetails(hhData);
       return res.json({
         householdId: hhSnap.id,
         name: hhData.name || null,
         inviteCode: hhData.inviteCode || null,
         chores,
+        roommates,
       });
     } catch (error) {
       console.error("Failed to fetch household:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   });
+
+  // Reassign chores within a household. Optional body: { strategy: 'round-robin' }
+  app.post(
+    "/api/household/:id/reassign",
+    async (req: Request, res: Response) => {
+      if (!(await initCollectionsIfNeeded(res))) return;
+      try {
+        const householdId = String(req.params.id || "").trim();
+        if (!householdId)
+          return res.status(400).json({ error: "Missing household id" });
+        if (!firestore)
+          return res.status(500).json({ error: "Firestore not initialized" });
+
+        const hhRef = firestore.collection("households").doc(householdId);
+        const hhSnap = await hhRef.get();
+        if (!hhSnap.exists)
+          return res.status(404).json({ error: "Household not found" });
+
+        const hhData = hhSnap.data() || {};
+        const householdChores: any[] = Array.isArray(hhData.chores)
+          ? hhData.chores
+          : [];
+        let householdUsers: string[] = Array.isArray(hhData.users)
+          ? hhData.users.map(String)
+          : [];
+
+        // If householdUsers empty, try to load users by householdId from users collection
+        if (householdUsers.length === 0) {
+          const snaps = await firestore
+            .collection("users")
+            .where("householdId", "==", householdId)
+            .get();
+          householdUsers = snaps.docs.map((d) => d.id);
+        }
+
+        if (householdUsers.length === 0) {
+          return res
+            .status(400)
+            .json({ error: "No users available to assign chores" });
+        }
+
+        // Default to round-robin
+        const strategy = String(
+          (req.body && req.body.strategy) || "round-robin"
+        );
+
+        let updatedChores: any[] = [];
+        if (strategy === "round-robin") {
+          const count = householdUsers.length;
+          updatedChores = householdChores.map((c: any, idx: number) => {
+            const chore = { ...(c || {}) };
+            chore.assignedTo = String(householdUsers[idx % count]);
+            return chore;
+          });
+        } else if (Array.isArray(req.body?.assignments)) {
+          // assignments: [{ choreId, userId }, ...]
+          const byId = new Map<string, any>(
+            householdChores.map((c: any) => [String(c.id), c])
+          );
+          for (const a of req.body.assignments) {
+            const cid = String(a.choreId || "");
+            const uid = String(a.userId || "");
+            if (!byId.has(cid)) continue;
+            const chore = { ...(byId.get(cid) || {}) };
+            chore.assignedTo = uid;
+            byId.set(cid, chore);
+          }
+          updatedChores = Array.from(byId.values());
+        } else {
+          return res.status(400).json({ error: "Unknown reassign strategy" });
+        }
+
+        try {
+          await hhRef.update({ chores: updatedChores });
+        } catch (err) {
+          return res
+            .status(500)
+            .json({ error: "Failed to persist reassigned chores" });
+        }
+
+        const roommates = await resolveRoommatesDetails(hhData);
+        return res.json({
+          success: true,
+          householdId,
+          chores: updatedChores,
+          roommates,
+        });
+      } catch (error: any) {
+        return res
+          .status(500)
+          .json({ error: error?.message || "Failed to reassign chores" });
+      }
+    }
+  );
 
   /**
    * BEGINNNING OF ENDPOINT THAT MIGHT BE DELETED
@@ -1339,7 +1580,11 @@ export async function registerUsers(app: Express) {
       if (qId) {
         hhSnap = await firestore!.collection("households").doc(qId).get();
       } else if (qName) {
-        const qq = await firestore!.collection("households").where("name", "==", qName).limit(1).get();
+        const qq = await firestore!
+          .collection("households")
+          .where("name", "==", qName)
+          .limit(1)
+          .get();
         if (!qq.empty) hhSnap = qq.docs[0];
       } else {
         // Try to resolve household from session cookie (chore_user) or fallback to cookie values
@@ -1349,14 +1594,21 @@ export async function registerUsers(app: Express) {
             const decoded = decodeURIComponent(String(raw));
             const cookieUser = JSON.parse(decoded);
             // cookieUser may contain householdId
-            const hid = cookieUser?.householdId ?? cookieUser?.household?.id ?? null;
+            const hid =
+              cookieUser?.householdId ?? cookieUser?.household?.id ?? null;
             if (hid) {
-              hhSnap = await firestore!.collection("households").doc(String(hid)).get();
+              hhSnap = await firestore!
+                .collection("households")
+                .doc(String(hid))
+                .get();
             } else {
               // try resolving user's household id from users collection
               const dbUser = await fetchUserFromDb(cookieUser);
               if (dbUser && dbUser.householdId) {
-                hhSnap = await firestore!.collection("households").doc(String(dbUser.householdId)).get();
+                hhSnap = await firestore!
+                  .collection("households")
+                  .doc(String(dbUser.householdId))
+                  .get();
               }
             }
           }
@@ -1374,12 +1626,18 @@ export async function registerUsers(app: Express) {
 
       // Resolve users in household (hhData.users may be array of user ids or objects)
       const userIds: string[] = Array.isArray(hhData.users)
-        ? hhData.users.map((u: any) => (typeof u === "string" ? u : String(u.id)))
+        ? hhData.users.map((u: any) =>
+            typeof u === "string" ? u : String(u.id)
+          )
         : [];
 
       const users: { id: string; name: string | null }[] = [];
       if (userIds.length > 0) {
-        const snaps = await Promise.all(userIds.map((uid) => firestore!.collection("users").doc(String(uid)).get()));
+        const snaps = await Promise.all(
+          userIds.map((uid) =>
+            firestore!.collection("users").doc(String(uid)).get()
+          )
+        );
         for (const s of snaps) {
           if (s.exists) {
             const d: any = s.data() || {};
@@ -1408,7 +1666,11 @@ export async function registerUsers(app: Express) {
       }
 
       // Ensure every household user appears in perUser
-      const perUser = users.map((u) => ({ id: u.id, name: u.name ?? u.id, score: scores.get(u.id) ?? 0 }));
+      const perUser = users.map((u) => ({
+        id: u.id,
+        name: u.name ?? u.id,
+        score: scores.get(u.id) ?? 0,
+      }));
 
       // If there are assign-to userIds not in household users, include them too
       for (const [uid, sc] of scores.entries()) {
@@ -1417,7 +1679,10 @@ export async function registerUsers(app: Express) {
         }
       }
 
-      const totalPoints = perUser.reduce((s, p) => s + (Number(p.score) || 0), 0);
+      const totalPoints = perUser.reduce(
+        (s, p) => s + (Number(p.score) || 0),
+        0
+      );
 
       // Gini coefficient -> fairness (0..100)
       function gini(values: number[]) {
@@ -1438,7 +1703,9 @@ export async function registerUsers(app: Express) {
 
       return res.json({ householdId, perUser, totalPoints, fairness });
     } catch (err: any) {
-      return res.status(500).json({ error: err?.message || "Failed to compute fairness" });
+      return res
+        .status(500)
+        .json({ error: err?.message || "Failed to compute fairness" });
     }
   });
 
@@ -1446,4 +1713,3 @@ export async function registerUsers(app: Express) {
    * END OF ENDPOINT THAT MIGHT BE DELETED
    */
 }
-

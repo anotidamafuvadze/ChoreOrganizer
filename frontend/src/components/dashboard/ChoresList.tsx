@@ -147,6 +147,9 @@ function isOverdue(chore: any) {
 
 export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
   const [chores, setChores] = useState<any[]>([]);
+  const [roommatesById, setRoommatesById] = useState<Record<string, string>>(
+    {}
+  );
   const [debugInfo, setDebugInfo] = useState<{
     identifier?: string;
     count?: number;
@@ -195,14 +198,58 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
 
       if (!id && !currentUser.email) return;
 
-      const identifier = id || currentUser.email!;
-      const result = await fetchChores(identifier);
+      // Prefer household-level chores so all roommates see the same list.
+      let householdId: string | null = currentUser.householdId || null;
+      if (!householdId) {
+        // try to resolve via /api/user/me
+        try {
+          const meRes = await fetch(
+            `http://localhost:3000/api/user/me?email=${encodeURIComponent(
+              currentUser.email || ""
+            )}`,
+            { credentials: "include" }
+          );
+          const meData = meRes.ok ? await meRes.json() : null;
+          if (meData?.householdId) {
+            householdId = meData.householdId;
+            onUserUpdate?.(meData.user || currentUser);
+          }
+        } catch {}
+      }
+
+      let result: any = { chores: [], householdName: null, roommates: [] };
+      if (householdId) {
+        try {
+          const hhRes = await fetch(
+            `http://localhost:3000/api/household/${encodeURIComponent(
+              householdId
+            )}`,
+            {
+              credentials: "include",
+            }
+          );
+          if (hhRes.ok) result = await hhRes.json();
+        } catch (e) {
+          // fallback to per-user chores
+          const identifier = id || currentUser.email!;
+          result = await fetchChores(identifier);
+        }
+      } else {
+        const identifier = id || currentUser.email!;
+        result = await fetchChores(identifier);
+      }
 
       if (!mounted) return;
 
       console.log("Raw chores from API:", result.chores);
 
-      const mapped = result.chores.map((c: any) => {
+      // Build a map of roommate id -> name for display
+      const roommatesMap: Record<string, string> = {};
+      (result.roommates || []).forEach((r: any) => {
+        if (r && r.name && r.id) roommatesMap[String(r.id)] = String(r.name);
+      });
+
+      const mapped = (result.chores || []).map((c: any) => {
         console.log(`Processing chore [${c.name}]:`, {
           dueDate: c.dueDate,
           lastCompletedAt: c.lastCompletedAt,
@@ -210,16 +257,38 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
           completed: c.completed,
         });
 
+        // Normalize assignedTo to array of ids
+        let assignedIds: string[] = [];
+        if (Array.isArray(c.assignedTo)) assignedIds = c.assignedTo.map(String);
+        else if (c.assignedTo) assignedIds = [String(c.assignedTo)];
+
+        const assignedNames = assignedIds.map((aid) =>
+          String(aid) === String(currentUser.id)
+            ? "You"
+            : roommatesMap[aid] || aid
+        );
+
+        const myChores = chores.filter((c) =>
+          (c.assignedIds || []).includes(String(currentUser.id))
+        );
+
+        const otherChores = chores.filter(
+          (c) => !(c.assignedIds || []).includes(String(currentUser.id))
+        );
+
         return {
           ...c,
+          assignedIds,
+          assignedNames,
           dueDay: computeDueDay(c),
           isOverdue: isOverdue(c),
         };
       });
 
       setChores(mapped);
+      setRoommatesById(roommatesMap);
       setDebugInfo({
-        identifier,
+        identifier: householdId || id || currentUser.email,
         count: mapped.length,
         householdName: result.householdName,
       });
@@ -257,8 +326,28 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.chore) return;
 
+      const updated = data.chore;
+      // normalize assigned ids and names using roommatesById state
+      let assignedIds: string[] = [];
+      if (Array.isArray(updated.assignedTo))
+        assignedIds = updated.assignedTo.map(String);
+      else if (updated.assignedTo) assignedIds = [String(updated.assignedTo)];
+      const assignedNames = assignedIds.map((aid) =>
+        String(aid) === String(currentUser.id)
+          ? "You"
+          : roommatesById[String(aid)] || String(aid)
+      );
+
+      const merged = {
+        ...updated,
+        assignedIds,
+        assignedNames,
+        dueDay: computeDueDay(updated),
+        isOverdue: isOverdue(updated),
+      };
+
       setChores((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, ...data.chore } : c))
+        prev.map((c) => (c.id === id ? { ...c, ...merged } : c))
       );
 
       if (data.chore.completed) {
@@ -276,92 +365,219 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
 
   return (
     <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-8 border border-purple-100/50 shadow-lg">
+      {/* Automatic weekly reassignment is handled server-side; manual button removed */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-purple-700 mb-1">Your Chores This Week</h3>
+          <h3 className="text-purple-700 mb-1">Chores This Week</h3>
           <p className="text-purple-500 text-sm">
             {completed} of {chores.length} complete • Nice work! 🎉
           </p>
         </div>
       </div>
 
-      <div className="space-y-3">
-        {chores.map((chore) => (
-          <motion.div
-            key={chore.id}
-            layout
-            className={`relative p-5 rounded-2xl border-2 transition-all ${
-              chore.completed
-                ? "bg-green-100 border-green-300"
-                : chore.isOverdue && !chore.completed
-                ? "bg-gradient-to-r from-red-100 to-orange-100 border-red-400 shadow-md"
-                : chore.dueDay === "Today"
-                ? "bg-yellow-100 border-yellow-300"
-                : "bg-white/80 border-purple-100"
-            }`}
-          >
-            {confettiId === chore.id && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                {[...Array(8)].map((_, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ scale: 0, x: 0, y: 0, opacity: 1 }}
-                    animate={{
-                      scale: 1,
-                      x: Math.cos((i * 45 * Math.PI) / 180) * 60,
-                      y: Math.sin((i * 45 * Math.PI) / 180) * 60,
-                      opacity: 0,
-                    }}
-                    transition={{ duration: 0.6 }}
-                    className="absolute w-2 h-2 bg-yellow-400 rounded-full"
-                  />
-                ))}
-              </div>
-            )}
+      <div className="space-y-8">
+        {(() => {
+          const myChores = chores.filter((c) =>
+            (c.assignedIds || []).includes(currentUser.id)
+          );
+          const roommateChores = chores.filter(
+            (c) => !(c.assignedIds || []).includes(currentUser.id)
+          );
 
-            <div className="flex items-center gap-4">
-              <Checkbox
-                checked={chore.completed}
-                onCheckedChange={(v) => handleToggle(chore.id, v === true)}
-                className="w-6 h-6 border-purple-300"
-              />
-
+          return (
+            <>
+              {/* ---------------- YOUR CHORES ---------------- */}
               <div>
-                <p
-                  className={`${
-                    chore.completed
-                      ? "line-through text-purple-400"
-                      : "text-purple-700"
-                  }`}
-                >
-                  {chore.name}
-                </p>
+                <h3 className="text-purple-700 font-semibold mb-3">
+                  Your Chores
+                </h3>
+                <div className="space-y-3">
+                  {myChores.length === 0 && (
+                    <p className="text-sm text-purple-400 italic">
+                      No chores assigned to you.
+                    </p>
+                  )}
 
-                <div className="text-xs mt-1 flex gap-2">
-                  <span
-                    className={`px-2 py-1 rounded-full ${
-                      chore.isOverdue && !chore.completed
-                        ? "bg-red-200 text-red-800 font-semibold"
-                        : chore.dueDay === "Today"
-                        ? "bg-orange-200 text-orange-700"
-                        : "bg-purple-100 text-purple-600"
-                    }`}
-                  >
-                    {chore.isOverdue && !chore.completed && "⚠️ "}
-                    {chore.dueDay}
-                  </span>
-                  <span className="text-purple-500">{chore.points} points</span>
+                  {myChores.map((chore) => (
+                    <motion.div
+                      key={chore.id}
+                      layout
+                      className={`relative p-5 rounded-2xl border-2 transition-all ${
+                        chore.completed
+                          ? "bg-green-100 border-green-300"
+                          : chore.isOverdue && !chore.completed
+                          ? "bg-gradient-to-r from-red-100 to-orange-100 border-red-400 shadow-md"
+                          : chore.dueDay === "Today"
+                          ? "bg-yellow-100 border-yellow-300"
+                          : "bg-white/80 border-purple-100"
+                      }`}
+                    >
+                      {confettiId === chore.id && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          {[...Array(8)].map((_, i) => (
+                            <motion.div
+                              key={i}
+                              initial={{ scale: 0, x: 0, y: 0, opacity: 1 }}
+                              animate={{
+                                scale: 1,
+                                x: Math.cos((i * 45 * Math.PI) / 180) * 60,
+                                y: Math.sin((i * 45 * Math.PI) / 180) * 60,
+                                opacity: 0,
+                              }}
+                              transition={{ duration: 0.6 }}
+                              className="absolute w-2 h-2 bg-yellow-400 rounded-full"
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-4">
+                        <Checkbox
+                          checked={chore.completed}
+                          onCheckedChange={(v) =>
+                            handleToggle(chore.id, v === true)
+                          }
+                          className="w-6 h-6 border-purple-300"
+                          disabled={false} // user can check their own chores
+                        />
+
+                        <div>
+                          <p
+                            className={`${
+                              chore.completed
+                                ? "line-through text-purple-400"
+                                : "text-purple-700"
+                            }`}
+                          >
+                            {chore.name}
+                          </p>
+
+                          <div className="text-xs mt-1 flex gap-2 items-center">
+                            <span className="text-xs text-purple-500">
+                              Assigned to:{" "}
+                              <span className="font-semibold text-purple-700">
+                                {(chore.assignedNames || []).join(", ")}
+                              </span>
+                            </span>
+                          </div>
+
+                          <div className="text-xs mt-1 flex gap-2">
+                            <span
+                              className={`px-2 py-1 rounded-full ${
+                                chore.isOverdue && !chore.completed
+                                  ? "bg-red-200 text-red-800 font-semibold"
+                                  : chore.dueDay === "Today"
+                                  ? "bg-orange-200 text-orange-700"
+                                  : "bg-purple-100 text-purple-600"
+                              }`}
+                            >
+                              {chore.isOverdue && !chore.completed && "⚠️ "}
+                              {chore.dueDay}
+                            </span>
+                            <span className="text-purple-500">
+                              {chore.points} points
+                            </span>
+                          </div>
+                        </div>
+
+                        {chore.completed && (
+                          <div className="ml-auto p-2 bg-green-200 rounded-xl">
+                            <Check className="w-5 h-5 text-green-700" />
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
               </div>
 
-              {chore.completed && (
-                <div className="ml-auto p-2 bg-green-200 rounded-xl">
-                  <Check className="w-5 h-5 text-green-700" />
+              {/* ---------------- ROOMMATES' CHORES ---------------- */}
+              <div className="pt-6 border-t border-purple-200/70">
+                <h3 className="text-purple-700 font-semibold mb-3">
+                  Roommates' Chores
+                </h3>
+
+                <div className="space-y-3">
+                  {roommateChores.length === 0 && (
+                    <p className="text-sm text-purple-400 italic">
+                      No chores assigned to roommates.
+                    </p>
+                  )}
+
+                  {roommateChores.map((chore) => (
+                    <motion.div
+                      key={chore.id}
+                      layout
+                      className={`relative p-5 rounded-2xl border-2 transition-all ${
+                        chore.completed
+                          ? "bg-green-100 border-green-300"
+                          : chore.isOverdue && !chore.completed
+                          ? "bg-gradient-to-r from-red-100 to-orange-100 border-red-400 shadow-md"
+                          : chore.dueDay === "Today"
+                          ? "bg-yellow-100 border-yellow-300"
+                          : "bg-white/80 border-purple-100"
+                      }`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <Checkbox
+                          checked={chore.completed}
+                          onCheckedChange={() => {}}
+                          disabled // cannot check roommates’ chores
+                          className="w-6 h-6 border-purple-300"
+                        />
+
+                        <div>
+                          <p
+                            className={`${
+                              chore.completed
+                                ? "line-through text-purple-400"
+                                : "text-purple-700"
+                            }`}
+                          >
+                            {chore.name}
+                          </p>
+
+                          <div className="text-xs mt-1 flex gap-2 items-center">
+                            <span className="text-xs text-purple-500">
+                              Assigned to:{" "}
+                              <span className="font-semibold text-purple-700">
+                                {(chore.assignedNames || []).join(", ")}
+                              </span>
+                            </span>
+                          </div>
+
+                          <div className="text-xs mt-1 flex gap-2">
+                            <span
+                              className={`px-2 py-1 rounded-full ${
+                                chore.isOverdue && !chore.completed
+                                  ? "bg-red-200 text-red-800 font-semibold"
+                                  : chore.dueDay === "Today"
+                                  ? "bg-orange-200 text-orange-700"
+                                  : "bg-purple-100 text-purple-600"
+                              }`}
+                            >
+                              {chore.isOverdue && !chore.completed && "⚠️ "}
+                              {chore.dueDay}
+                            </span>
+                            <span className="text-purple-500">
+                              {chore.points} points
+                            </span>
+                          </div>
+                        </div>
+
+                        {chore.completed && (
+                          <div className="ml-auto p-2 bg-green-200 rounded-xl">
+                            <Check className="w-5 h-5 text-green-700" />
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
-              )}
-            </div>
-          </motion.div>
-        ))}
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {completed === chores.length && chores.length > 0 && (

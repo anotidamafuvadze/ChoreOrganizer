@@ -17,7 +17,6 @@ TODO: Verify that a user can create and join an existing household (Anotida)
 - adjust the api/user/invite/:code endpoint so that all it does is ensure that when a user is finished onboarding they are added to the proper household
 
 TODO: Implement authentication of emails
-TODO: Implement email notification 
 TODO: Add back button to every onboarding step
 
 
@@ -25,7 +24,7 @@ TODO: Add back button to every onboarding step
 - Chore List
 TODO: Replace the mock chores in ChoresList component with real chores fetching from backend and update user points accordingly when completed (noor)
 TODO: Dynamically adjust styling of chore component when it is overdue (noor)
-TODO: Have checking off chore in frontend update chore information in backend household collection (completed field should now say completed)
+TODO: Have checking off chore in frontend update chore information in backend household collection (completed field should now say completed) (noor)
 
 - Fairness Meter
 TODO: Replace mock roomate data with real roomate data fetched from backend (Madison)
