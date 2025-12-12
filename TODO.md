@@ -47,7 +47,7 @@ TODO: Add/Implement buttons to navigate to between weeks and months on the Calen
 TODO: Add a month view on the CalendarScreen
 TODO: Calculate and display real stats on the weekly summary section of CalendarScreen
 
-## Chore Screen
+## Chore Screen (noor)
 TODO: Replace the chore list with real data fetching from backend on the ChoresScreen
 TODO: Replace the preference stats with real data fetching from backend on the ChoresScreen and implement preference update function
 TODO: Implement edit/add chore functionality on ChoresScreen
