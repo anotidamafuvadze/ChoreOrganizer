@@ -17,6 +17,7 @@ TODO: Verify that a user can create and join an existing household (Anotida)
 - adjust the api/user/invite/:code endpoint so that all it does is ensure that when a user is finished onboarding they are added to the proper household
 
 TODO: Implement authentication of emails
+TODO: Implement email notification 
 TODO: Add back button to every onboarding step
 
 
@@ -33,7 +34,7 @@ TODO: Make messages dynamic based on user and fairness scores
 
 - Greeting Row
 TODO: Replace mock roomate data with real roomate data fetched from backend (noor)
-TODO: Replace mock user points with real user points fetched from backend
+TODO: Replace mock user points with real user points fetched from backend (noor)
 
 -Leaderboard Preview
 TODO: Replace mock leaderboard data with real data fetched from backend (Madison)
