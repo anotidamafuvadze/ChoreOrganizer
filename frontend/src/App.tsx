@@ -115,7 +115,7 @@ export default function App() {
         if (data.user.email) {
           localStorage.setItem("email", data.user.email.toLowerCase());
           console.log("Set email in localStorage:", data.user.email.toLowerCase());
-           // Immediately check and log the value
+          // Immediately check and log the value
           console.log("localStorage.getItem('email'):", localStorage.getItem("email"));
           localStorage.setItem("testkey", "testvalue");
           console.log(localStorage.getItem("testkey"));
@@ -282,8 +282,20 @@ export default function App() {
       if (!merged.color && currentUser.color) merged.color = currentUser.color;
     }
 
+    // Convert merged.preferences (map/object) into an array of { chore, preference }
+    const preferencesArray: { chore: string; preference: string }[] = Object.entries(
+      merged.preferences ?? {}
+    ).map(([chore, pref]) => ({
+      chore: String(chore),
+      preference: String(pref),
+    }));
+
+    // preferencesArray is now available for logging or sending to backend
+    // console.log(preferencesArray);
+
     setCurrentUser(merged);
     setHousehold(householdName);
+
 
     try {
       const payload: any = {
@@ -293,7 +305,7 @@ export default function App() {
           bday: (merged as any).bday,
           mascot: merged.mascot,
           color: merged.color,
-          preferences: merged.preferences,
+          preferences: preferencesArray,
           chores: chores && chores.length ? chores : merged.chores,
           email: merged.email,
           password: merged.password,
@@ -463,7 +475,7 @@ export default function App() {
             )}
             {activeView === "chores" && <ChoresScreen />}
             {activeView === "calendar" && (
-            <CalendarScreen householdId={currentUser?.householdId ?? ""}/>)}
+              <CalendarScreen householdId={currentUser?.householdId ?? ""} />)}
             {activeView === "leaderboard" && <LeaderboardScreen />}
             {activeView === "settings" && (
               <SettingsScreen

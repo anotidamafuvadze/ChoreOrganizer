@@ -9,7 +9,7 @@ import {
     assignUserstoChores
 } from "../users/firebaseHelpers";
 
-type Household = { id: number, name: string, users: User[], chores: Chore[] }
+type Household = { id: number, name: string, users: User[], chores: Chore[], pendingChores: [] }
 type Chore = { assignedTo: string, completed: boolean, id: string, name: string }
 type User = {
     name: String,
@@ -17,7 +17,7 @@ type User = {
     icon: string,
     household: Household,
     preferences: [{ chore: Chore, prefNum: string }],
-    choreHistory: [{ week: number, chores: Chore[] }]
+    choreHistory: Chore[]
 }
 type FlowNodeID = string;
 
@@ -59,11 +59,26 @@ function getChoreAssignmentCost(
     user: User,
     chore: Chore,
 ): number {
-    const prefEntry = user.preferences.find(p => p.chore.id === chore.id);
-    if (!prefEntry) return 99999;
+    // preferences may be legacy [{ chore: {id,name}, prefNum }] or new [{ chore: string, preference: string }]
+    const prefs = Array.isArray((user as any).preferences) ? (user as any).preferences : [];
+    const prefEntry: any | undefined = prefs.find((p: any) => {
+        if (!p) return false;
+        const choreRef = p.chore;
+        // choreRef can be a string (chore name/id) or object { id, name }
+        if (typeof choreRef === "string") {
+            return String(choreRef) === String(chore.name) || String(choreRef) === String(chore.id);
+        } else if (choreRef && typeof choreRef === "object") {
+            return String(choreRef.name ?? choreRef.id ?? "") === String(chore.name) || String(choreRef.name ?? choreRef.id ?? "") === String(chore.id);
+        }
+        return false;
+    });
+
+    // accept multiple field names for preference value for backward compatibility
+    const prefVal = prefEntry?.prefNum ?? prefEntry?.preference ?? prefEntry?.pref ?? null;
+    if (!prefVal) return 99999;
 
     let baseCost = 0;
-    switch (prefEntry.prefNum) {
+    switch (String(prefVal)) {
         case "love": baseCost = 10; break;
         case "neutral": baseCost = 30; break;
         case "avoid": baseCost = 200; break;
@@ -72,7 +87,7 @@ function getChoreAssignmentCost(
 
     const noise = Math.floor(Math.random() * 6);
 
-    const lastWeek = chore.assignedTo
+    const lastWeek = chore.assignedTo;
 
     let repeatPenalty = 0;
     if (lastWeek === user.id) {
@@ -91,14 +106,22 @@ export function buildFlowGraph(
     household: Household,
 ): FlowGraph {
 
+
     const nodes: FlowNode[] = [];
     const edges: FlowEdge[] = [];
     const source: FlowNode = { id: "source", type: "source" };
     const sink: FlowNode = { id: "sink", type: "sink" };
     nodes.push(source, sink);
+    let useChores;
+    if (household.chores.length === 0) {
+        useChores = household.pendingChores
+    }
+    else {
+        useChores = household.chores
+    }
 
     const numUsers = household.users.length;
-    const numChores = household.chores.length;
+    const numChores = useChores.length;
 
     const baseChores = Math.floor(numChores / numUsers);
     const extraChores = numChores % numUsers;
@@ -111,6 +134,7 @@ export function buildFlowGraph(
 
     for (let i = 0; i < usersSorted.length; i++) {
         const user = usersSorted[i];
+
         const totalClones = baseChores + (i < extraChores ? 1 : 0);
 
         for (let c = 0; c < totalClones; c++) {
@@ -130,7 +154,7 @@ export function buildFlowGraph(
 
     const choreNodes: { chore: Chore; id: string }[] = [];
 
-    for (const chore of household.chores) {
+    for (const chore of useChores) {
         const choreID = makeID();
         choreNodes.push({ chore, id: choreID });
         // attach chore metadata so downstream can report names
@@ -240,7 +264,7 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
         cost += pushFlow * dist[sink];
     }
 
-    const nameAssignments: { userName: string; choreName: string }[] = [];
+    const nameAssignments: { userName: string; choreName: string; userId?: string }[] = [];
     for (let u = 0; u < N; u++) {
         for (const edge of adj[u]) {
             if (
@@ -254,8 +278,11 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
                 const fromNodeObj = graph.nodes[nodeIndex.get(edge.fromNode)!];
                 const toNodeObj = graph.nodes[nodeIndex.get(edge.toNode)!];
                 const userName = fromNodeObj.meta?.userName ?? String(edge.fromNode);
+                const userId = fromNodeObj.meta?.userId ?? undefined;
                 const choreName = toNodeObj.meta?.choreName ?? String(edge.toNode);
-                nameAssignments.push({ userName, choreName });
+                // return userId when available for reliable persistence
+                nameAssignments.push({ userName, choreName, userId });
+
             }
         }
     }
@@ -264,7 +291,6 @@ export function minCostMaxFlow(graph: FlowGraph): MCMFResult {
 }
 
 app.post("/assign-chores", async (req: Request, res: Response) => {
-    console.log("i've been called")
     const { household, householdId } = req.body;
     try {
         // Resolve household object (either passed in or fetch by id)
@@ -293,6 +319,7 @@ app.post("/assign-chores", async (req: Request, res: Response) => {
 
         // Persist assignments (await the Promise)
         const assignmentResult = await assignUserstoChores(flowResult.assignments, resolvedHouseholdId);
+
 
         return res.json({
             success: true,

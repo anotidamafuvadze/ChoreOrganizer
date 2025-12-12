@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Check } from "lucide-react";
 import { motion } from "motion/react";
 import { User } from "../../App";
 import { Checkbox } from "../ui/checkbox";
+import { Button } from "../ui/button";
 
 interface ChoresListProps {
   currentUser: User;
@@ -67,9 +68,9 @@ function calculateActualDueDate(chore: any): Date | null {
   const today = new Date();
   const daysSinceCreation = chore.dueDate
     ? Math.floor(
-        (today.getTime() - new Date(chore.dueDate).getTime()) /
-          (1000 * 60 * 60 * 24)
-      )
+      (today.getTime() - new Date(chore.dueDate).getTime()) /
+      (1000 * 60 * 60 * 24)
+    )
     : 0;
 
   let frequencyDays = 7; // default weekly
@@ -150,6 +151,10 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
   const [roommatesById, setRoommatesById] = useState<Record<string, string>>(
     {}
   );
+  const [hasTemplates, setHasTemplates] = useState<boolean>(false);
+  const [assigning, setAssigning] = useState<boolean>(false);
+  const [assignedOnce, setAssignedOnce] = useState<boolean>(false);
+  const mountedRef = useRef(true);
   const [debugInfo, setDebugInfo] = useState<{
     identifier?: string;
     count?: number;
@@ -160,145 +165,188 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
   const [confettiId, setConfettiId] = useState<string | null>(null);
 
   // -----------------------------
-  // Load Chores
+  // Load Chores (callable)
   // -----------------------------
-  useEffect(() => {
-    let mounted = true;
+  async function loadChores() {
+    if (!currentUser) return;
 
-    async function loadChores() {
-      if (!currentUser) return;
+    let id = currentUser.id;
 
-      let id = currentUser.id;
+    // fallback if missing ID → check local storage
+    if (!id) {
+      try {
+        const cached = JSON.parse(localStorage.getItem("session:user") || "");
+        if (cached?.id) id = cached.id;
+      } catch { }
+    }
 
-      // fallback if missing ID → check local storage
-      if (!id) {
-        try {
-          const cached = JSON.parse(localStorage.getItem("session:user") || "");
-          if (cached?.id) id = cached.id;
-        } catch {}
-      }
+    // fallback if still missing → lookup by email
+    if (!id && currentUser.email) {
+      try {
+        const meRes = await fetch(
+          `http://localhost:3000/api/user/me?email=${encodeURIComponent(
+            currentUser.email
+          )}`,
+          { credentials: "include" }
+        );
+        const meData = meRes.ok ? await meRes.json() : null;
 
-      // fallback if still missing → lookup by email
-      if (!id && currentUser.email) {
-        try {
-          const meRes = await fetch(
-            `http://localhost:3000/api/user/me?email=${encodeURIComponent(
-              currentUser.email
-            )}`,
-            { credentials: "include" }
-          );
-          const meData = meRes.ok ? await meRes.json() : null;
-
-          if (meData?.user) {
-            id = meData.user.id;
-            onUserUpdate?.(meData.user);
-          }
-        } catch {}
-      }
-
-      if (!id && !currentUser.email) return;
-
-      // Prefer household-level chores so all roommates see the same list.
-      let householdId: string | null = currentUser.householdId || null;
-      if (!householdId) {
-        // try to resolve via /api/user/me
-        try {
-          const meRes = await fetch(
-            `http://localhost:3000/api/user/me?email=${encodeURIComponent(
-              currentUser.email || ""
-            )}`,
-            { credentials: "include" }
-          );
-          const meData = meRes.ok ? await meRes.json() : null;
-          if (meData?.householdId) {
-            householdId = meData.householdId;
-            onUserUpdate?.(meData.user || currentUser);
-          }
-        } catch {}
-      }
-
-      let result: any = { chores: [], householdName: null, roommates: [] };
-      if (householdId) {
-        try {
-          const hhRes = await fetch(
-            `http://localhost:3000/api/household/${encodeURIComponent(
-              householdId
-            )}`,
-            {
-              credentials: "include",
-            }
-          );
-          if (hhRes.ok) result = await hhRes.json();
-        } catch (e) {
-          // fallback to per-user chores
-          const identifier = id || currentUser.email!;
-          result = await fetchChores(identifier);
+        if (meData?.user) {
+          id = meData.user.id;
+          onUserUpdate?.(meData.user);
         }
-      } else {
+      } catch { }
+    }
+
+    if (!id && !currentUser.email) return;
+
+    // Prefer household-level chores so all roommates see the same list.
+    let householdId: string | null = currentUser.householdId || null;
+    if (!householdId) {
+      // try to resolve via /api/user/me
+      try {
+        const meRes = await fetch(
+          `http://localhost:3000/api/user/me?email=${encodeURIComponent(
+            currentUser.email || ""
+          )}`,
+          { credentials: "include" }
+        );
+        const meData = meRes.ok ? await meRes.json() : null;
+        if (meData?.householdId) {
+          householdId = meData.householdId;
+          onUserUpdate?.(meData.user || currentUser);
+        }
+      } catch { }
+    }
+
+    let result: any = { chores: [], householdName: null, roommates: [] };
+    if (householdId) {
+      try {
+        const hhRes = await fetch(
+          `http://localhost:3000/api/household/${encodeURIComponent(
+            householdId
+          )}`,
+          {
+            credentials: "include",
+          }
+        );
+        if (hhRes.ok) result = await hhRes.json();
+      } catch (e) {
+        // fallback to per-user chores
         const identifier = id || currentUser.email!;
         result = await fetchChores(identifier);
       }
-
-      if (!mounted) return;
-
-      console.log("Raw chores from API:", result.chores);
-
-      // Build a map of roommate id -> name for display
-      const roommatesMap: Record<string, string> = {};
-      (result.roommates || []).forEach((r: any) => {
-        if (r && r.name && r.id) roommatesMap[String(r.id)] = String(r.name);
-      });
-
-      const mapped = (result.chores || []).map((c: any) => {
-        console.log(`Processing chore [${c.name}]:`, {
-          dueDate: c.dueDate,
-          lastCompletedAt: c.lastCompletedAt,
-          frequency: c.frequency,
-          completed: c.completed,
-        });
-
-        // Normalize assignedTo to array of ids
-        let assignedIds: string[] = [];
-        if (Array.isArray(c.assignedTo)) assignedIds = c.assignedTo.map(String);
-        else if (c.assignedTo) assignedIds = [String(c.assignedTo)];
-
-        const assignedNames = assignedIds.map((aid) =>
-          String(aid) === String(currentUser.id)
-            ? "You"
-            : roommatesMap[aid] || aid
-        );
-
-        const myChores = chores.filter((c) =>
-          (c.assignedIds || []).includes(String(currentUser.id))
-        );
-
-        const otherChores = chores.filter(
-          (c) => !(c.assignedIds || []).includes(String(currentUser.id))
-        );
-
-        return {
-          ...c,
-          assignedIds,
-          assignedNames,
-          dueDay: computeDueDay(c),
-          isOverdue: isOverdue(c),
-        };
-      });
-
-      setChores(mapped);
-      setRoommatesById(roommatesMap);
-      setDebugInfo({
-        identifier: householdId || id || currentUser.email,
-        count: mapped.length,
-        householdName: result.householdName,
-      });
+    } else {
+      const identifier = id || currentUser.email!;
+      result = await fetchChores(identifier);
     }
 
+    if (!mountedRef.current) return;
+
+    // Build a map of roommate id -> name for display
+    const roommatesMap: Record<string, string> = {};
+    (result.roommates || []).forEach((r: any) => {
+      if (r && r.name && r.id) roommatesMap[String(r.id)] = String(r.name);
+    });
+
+    const mapped = (result.chores || []).map((c: any) => {
+      console.log(`Processing chore [${c.name}]:`, {
+        dueDate: c.dueDate,
+        lastCompletedAt: c.lastCompletedAt,
+        frequency: c.frequency,
+        completed: c.completed,
+      });
+
+      // Normalize assignedTo to array of ids
+      let assignedIds: string[] = [];
+      if (Array.isArray(c.assignedTo)) assignedIds = c.assignedTo.map(String);
+      else if (c.assignedTo) assignedIds = [String(c.assignedTo)];
+
+      const assignedNames = assignedIds.map((aid) =>
+        String(aid) === String(currentUser.id)
+          ? "You"
+          : roommatesMap[aid] || aid
+      );
+
+      return {
+        ...c,
+        assignedIds,
+        assignedNames,
+        dueDay: computeDueDay(c),
+        isOverdue: isOverdue(c),
+      };
+    });
+
+    setChores(mapped);
+    setRoommatesById(roommatesMap);
+    setHasTemplates(
+      Array.isArray(result.pendingChoreTemplates) &&
+      result.pendingChoreTemplates.length > 0
+    );
+    setDebugInfo({
+      identifier: householdId || id || currentUser.email,
+      count: mapped.length,
+      householdName: result.householdName,
+    });
+
+    // persistence: remember if this household has ever had assignments run
+    try {
+      const key = householdId ? `household:${householdId}:assignedOnce` : null;
+      const stored = key ? localStorage.getItem(key) === "true" : false;
+      // If chores present, that's evidence assignments ran — persist flag
+      if ((result.chores || []).length > 0) {
+        if (key) localStorage.setItem(key, "true");
+        setAssignedOnce(true);
+      } else {
+        setAssignedOnce(stored);
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }
+
+  useEffect(() => {
+    mountedRef.current = true;
     loadChores();
     return () => {
-      mounted = false;
+      mountedRef.current = false;
     };
   }, [currentUser]);
+
+  // Assign chores endpoint call
+  async function assignChores() {
+    // resolve household id from debugInfo or currentUser
+    const householdId =
+      currentUser?.householdId || (debugInfo?.identifier as string) || null;
+    if (!householdId) return;
+    setAssigning(true);
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/household/${encodeURIComponent(
+          householdId
+        )}/assign`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+      if (res.ok) {
+        // mark that this household has had assignments run at least once
+        try {
+          localStorage.setItem(`household:${householdId}:assignedOnce`, "true");
+        } catch { /* ignore */ }
+        setAssignedOnce(true);
+        await loadChores();
+      } else {
+        // optionally handle error
+      }
+    } catch (e) {
+      // ignore
+    } finally {
+      setAssigning(false);
+    }
+  }
 
   // -----------------------------
   // Toggle Completed State
@@ -365,15 +413,47 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
 
   return (
     <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-8 border border-purple-100/50 shadow-lg">
-      {/* Automatic weekly reassignment is handled server-side; manual button removed */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h3 className="text-purple-700 mb-1">Chores This Week</h3>
-          <p className="text-purple-500 text-sm">
-            {completed} of {chores.length} complete • Nice work! 🎉
-          </p>
+      {/* Show assign button when there are templates but no active household chores */}
+      {chores.length === 0 && hasTemplates ? (
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-purple-700 mb-1">Chores This Week</h3>
+            <p className="text-purple-500 text-sm">
+              No Chores Yet! — When all roommates have joined, assign chores!
+            </p>
+          </div>
+          <div>
+            <Button
+              onClick={assignChores}
+              disabled={assigning}
+              className="bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-2xl"
+            >
+              {assigning ? "Assigning..." : "Assign Chores"}
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-purple-700 mb-1">Chores This Week</h3>
+            <p className="text-purple-500 text-sm">
+              {chores.filter((c) => c.completed).length} of {chores.length} complete • Nice work! 🎉
+            </p>
+          </div>
+          <div>
+            {/* Persistent assign button appears after first successful assignment in household */}
+            {assignedOnce && (
+              <Button
+                onClick={assignChores}
+                disabled={assigning}
+                className="bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-2xl"
+              >
+                {assigning ? "Assigning..." : "Assign Chores"}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-8">
         {(() => {
@@ -402,15 +482,14 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
                     <motion.div
                       key={chore.id}
                       layout
-                      className={`relative p-5 rounded-2xl border-2 transition-all ${
-                        chore.completed
-                          ? "bg-green-100 border-green-300"
-                          : chore.isOverdue && !chore.completed
+                      className={`relative p-5 rounded-2xl border-2 transition-all ${chore.completed
+                        ? "bg-green-100 border-green-300"
+                        : chore.isOverdue && !chore.completed
                           ? "bg-gradient-to-r from-red-100 to-orange-100 border-red-400 shadow-md"
                           : chore.dueDay === "Today"
-                          ? "bg-yellow-100 border-yellow-300"
-                          : "bg-white/80 border-purple-100"
-                      }`}
+                            ? "bg-yellow-100 border-yellow-300"
+                            : "bg-white/80 border-purple-100"
+                        }`}
                     >
                       {confettiId === chore.id && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -443,11 +522,10 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
 
                         <div>
                           <p
-                            className={`${
-                              chore.completed
-                                ? "line-through text-purple-400"
-                                : "text-purple-700"
-                            }`}
+                            className={`${chore.completed
+                              ? "line-through text-purple-400"
+                              : "text-purple-700"
+                              }`}
                           >
                             {chore.name}
                           </p>
@@ -463,13 +541,12 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
 
                           <div className="text-xs mt-1 flex gap-2">
                             <span
-                              className={`px-2 py-1 rounded-full ${
-                                chore.isOverdue && !chore.completed
-                                  ? "bg-red-200 text-red-800 font-semibold"
-                                  : chore.dueDay === "Today"
+                              className={`px-2 py-1 rounded-full ${chore.isOverdue && !chore.completed
+                                ? "bg-red-200 text-red-800 font-semibold"
+                                : chore.dueDay === "Today"
                                   ? "bg-orange-200 text-orange-700"
                                   : "bg-purple-100 text-purple-600"
-                              }`}
+                                }`}
                             >
                               {chore.isOverdue && !chore.completed && "⚠️ "}
                               {chore.dueDay}
@@ -508,31 +585,29 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
                     <motion.div
                       key={chore.id}
                       layout
-                      className={`relative p-5 rounded-2xl border-2 transition-all ${
-                        chore.completed
-                          ? "bg-green-100 border-green-300"
-                          : chore.isOverdue && !chore.completed
+                      className={`relative p-5 rounded-2xl border-2 transition-all ${chore.completed
+                        ? "bg-green-100 border-green-300"
+                        : chore.isOverdue && !chore.completed
                           ? "bg-gradient-to-r from-red-100 to-orange-100 border-red-400 shadow-md"
                           : chore.dueDay === "Today"
-                          ? "bg-yellow-100 border-yellow-300"
-                          : "bg-white/80 border-purple-100"
-                      }`}
+                            ? "bg-yellow-100 border-yellow-300"
+                            : "bg-white/80 border-purple-100"
+                        }`}
                     >
                       <div className="flex items-center gap-4">
                         <Checkbox
                           checked={chore.completed}
-                          onCheckedChange={() => {}}
+                          onCheckedChange={() => { }}
                           disabled // cannot check roommates’ chores
                           className="w-6 h-6 border-purple-300"
                         />
 
                         <div>
                           <p
-                            className={`${
-                              chore.completed
-                                ? "line-through text-purple-400"
-                                : "text-purple-700"
-                            }`}
+                            className={`${chore.completed
+                              ? "line-through text-purple-400"
+                              : "text-purple-700"
+                              }`}
                           >
                             {chore.name}
                           </p>
@@ -548,13 +623,12 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
 
                           <div className="text-xs mt-1 flex gap-2">
                             <span
-                              className={`px-2 py-1 rounded-full ${
-                                chore.isOverdue && !chore.completed
-                                  ? "bg-red-200 text-red-800 font-semibold"
-                                  : chore.dueDay === "Today"
+                              className={`px-2 py-1 rounded-full ${chore.isOverdue && !chore.completed
+                                ? "bg-red-200 text-red-800 font-semibold"
+                                : chore.dueDay === "Today"
                                   ? "bg-orange-200 text-orange-700"
                                   : "bg-purple-100 text-purple-600"
-                              }`}
+                                }`}
                             >
                               {chore.isOverdue && !chore.completed && "⚠️ "}
                               {chore.dueDay}

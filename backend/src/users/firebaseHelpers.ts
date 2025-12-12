@@ -13,29 +13,52 @@ export async function fetchHouseholdFromFirestore(
     const doc = await firestore.collection("households").doc(householdId).get();
     if (!doc.exists) return null;
     const data: any = doc.data() || {};
+    const randomUsers = await firestore.collection("users").doc("9uInoQX5IFdHn4VzNtRO0mzeNeo2").get();
+    const randuserData: any = randomUsers.data() || {}
 
+    let users: any[] = [];
+    for (const use in data.users) {
+        const uId = data.users[use]
+        const docUsers = await firestore.collection("users").doc(uId).get();
+        const userData: any = docUsers.data() || {}
+        const obj = {
+            householdId: doc.id,
+            id: userData.id ?? null,
+            name: userData.name ?? null,
+            preferences: userData.preferences,
+            // (userData.preferences ?? []).map((p: any) => ({
+            //     chore: data.chores.map((f: any) => f.name === p),
+            //     prefNum: userData.get(p),
+            // })),
+            choreHistory: userData.chores
+        }
+        users.push(obj)
 
-    const users = (data.users ?? []).map((u: any) => ({
-        householdId: doc.id,
-        id: u.id ?? u, // support either array of ids or richer objects
-        name: u.name ?? null,
-        preferences: (u.preferences ?? []).map((p: any) => ({
-            chore: data.chores.map((f: any) => f.name === p),
-            prefNum: u.get(p),
-        })),
-        choreHistory: (u.choreHistory ?? []).map((h: any) => ({
-            week: h.week,
-            chores: (h.chores ?? []).map((c: any) => ({ id: c.id, name: c.name })),
-        })),
-    }));
+    }
 
-    const chores = (data.chores ?? []).map((c: any) => ({ assignedTo: c.assignedTo, completed: c.completed, id: c.id, name: c.name }));
+    // const users = (data.users ?? []).map((u: any) => ({
+    //     householdId: doc.id,
+    //     id: u.id ?? u, // support either array of ids or richer objects
+    //     name: u.name ?? null,
+    //     preferences: (u.preferences ?? []).map((p: any) => ({
+    //         chore: data.chores.map((f: any) => f.name === p),
+    //         prefNum: u.get(p),
+    //     })),
+    //     choreHistory: u.chores
+    // }));
+
+    // prefer active chores; if none exist, fall back to pending templates so assignment can run
+    const rawChores = (Array.isArray(data.chores) && data.chores.length > 0)
+        ? data.chores
+        : (Array.isArray(data.pendingChoreTemplates) ? data.pendingChoreTemplates : []);
+    const chores = rawChores.map((c: any) => ({ assignedTo: c.assignedTo ?? null, completed: c.completed ?? false, id: c.id, name: c.name }));
 
     const household = {
         id: doc.id,
         name: data.name ?? null,
         users,
         chores,
+        pendingChores: data.pendingChoreTemplates
     };
 
     // backref users to household if consumer expects it
@@ -68,7 +91,7 @@ export async function fetchUserByUid(uid: string): Promise<any | null> {
     };
 }
 
-export async function assignUserstoChores(assignments: { userName: string, choreName: string }[], householdId: string) {
+export async function assignUserstoChores(assignments: { userName: string, choreName: string, userId?: string }[], householdId: string) {
     if (!firestore) { throw new Error("Firestore not initialized"); }
 
     const db = firestore; // narrow for TS
@@ -79,8 +102,15 @@ export async function assignUserstoChores(assignments: { userName: string, chore
         if (!hhSnap.exists) throw new Error("Household not found");
 
         const hhData: any = hhSnap.data() || {};
+        let houseChores;
+        if (hhData.chores.length === 0) {
+            houseChores = hhData.pendingChoreTemplates
+        }
+        else {
+            houseChores = hhData.chores
+        }
         // clone household chores so we can mutate safely
-        const householdChores: any[] = Array.isArray(hhData.chores) ? hhData.chores.map((c: any) => ({ ...c })) : [];
+        const householdChores: any[] = Array.isArray(houseChores) ? houseChores.map((c: any) => ({ ...c })) : [];
 
         // Build a map of choreName -> indices (multiple chores can share a name)
         const choresByName = new Map<string, number[]>();
@@ -95,12 +125,14 @@ export async function assignUserstoChores(assignments: { userName: string, chore
         const usersSnap = await db.collection("users").where("householdId", "==", String(householdId)).get();
         const userDocs = usersSnap.docs;
 
-        // Map userName -> docSnapshot (first match)
+        // Map userName -> docSnapshot (first match) and id -> docSnapshot
         const usersByName = new Map<string, FirebaseFirestore.DocumentSnapshot>();
+        const usersById = new Map<string, FirebaseFirestore.DocumentSnapshot>();
         userDocs.forEach((d) => {
             const data = d.data() || {};
             const nm = String(data.name ?? "");
             if (!usersByName.has(nm)) usersByName.set(nm, d);
+            usersById.set(d.id, d);
         });
 
         // Capture pre-existing chores per user (ids) so we only delete those that existed before this run
@@ -116,10 +148,18 @@ export async function assignUserstoChores(assignments: { userName: string, chore
 
         // Map userId -> Set<choreId> for chores to store for that user after deletions
         const newChoresByUser = new Map<string, Set<string>>();
+        // console.log(newChoresByUser)
 
         // Process assignments: assign household chore entry -> user (update assignedTo + bump dueDate)
         for (const a of assignments) {
-            const userDoc = usersByName.get(String(a.userName));
+            // Prefer passing userId from assignments; fallback to matching by userName
+            let userDoc: FirebaseFirestore.DocumentSnapshot | undefined | null = null;
+            if (a.userId) {
+                userDoc = usersById.get(String(a.userId)) ?? null;
+            }
+            if (!userDoc) {
+                userDoc = usersByName.get(String(a.userName)) ?? null;
+            }
             if (!userDoc) {
                 // user not found — skip
                 continue;
@@ -159,12 +199,14 @@ export async function assignUserstoChores(assignments: { userName: string, chore
                 assignedTo: userId,
                 dueDate: newDueDate
             };
-
+            // console.log("program runs up to where it should")
             // record this chore id to add to user's chores (store full chore id)
             const choreId = String(householdChores[chosenIdx].id);
             const set = newChoresByUser.get(userId) ?? new Set<string>();
             set.add(choreId);
             newChoresByUser.set(userId, set);
+            // console.log("UserID" + userId)
+            // console.log("Set" + set)
         }
 
         // Prepare user updates:
@@ -176,6 +218,7 @@ export async function assignUserstoChores(assignments: { userName: string, chore
             const existingData = d.data() || {};
 
             const newSet = newChoresByUser.get(userId);
+            //console.log(newSet)
             if (newSet && newSet.size > 0) {
                 // Build chores objects to store (preserve full chore fields)
                 const choresToStore = Array.from(newSet).map((cid) => {

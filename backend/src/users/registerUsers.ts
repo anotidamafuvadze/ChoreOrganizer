@@ -8,6 +8,10 @@ import {
   makeInviteCode,
 } from "./helperFunctions";
 
+// add imports to use assignment algorithm & writer
+import { buildFlowGraph, minCostMaxFlow } from "../algorithms/registerChoreSorter";
+import { assignUserstoChores, fetchHouseholdFromFirestore } from "./firebaseHelpers";
+
 // TODO: Break some of this up into smaller files
 
 // Helper to validate required fields for creating a user + household
@@ -134,8 +138,8 @@ async function resolveRoommateNames(hhData: any): Promise<string[]> {
         typeof u === "string"
           ? u
           : u && (u.id || u.userId)
-          ? String(u.id ?? u.userId)
-          : null
+            ? String(u.id ?? u.userId)
+            : null
       )
       .filter(Boolean) as string[];
 
@@ -168,8 +172,8 @@ async function resolveRoommatesDetails(
         typeof u === "string"
           ? u
           : u && (u.id || u.userId)
-          ? String(u.id ?? u.userId)
-          : null
+            ? String(u.id ?? u.userId)
+            : null
       )
       .filter(Boolean) as string[];
 
@@ -185,11 +189,11 @@ async function resolveRoommatesDetails(
       .map((s) =>
         s.exists
           ? {
-              id: s.id,
-              name: ((s.data() || {}).name ?? null) as string | null,
-              mascot: ((s.data() || {}).mascot ?? null) as string | null,
-              color: ((s.data() || {}).color ?? null) as string | null,
-            }
+            id: s.id,
+            name: ((s.data() || {}).name ?? null) as string | null,
+            mascot: ((s.data() || {}).mascot ?? null) as string | null,
+            color: ((s.data() || {}).color ?? null) as string | null,
+          }
           : null
       )
       .filter(Boolean)
@@ -843,12 +847,14 @@ export async function registerUsers(app: Express) {
       );
 
       try {
+        // Do NOT assign chores immediately: persist as pending templates.
         await householdRef.set({
           id: householdId,
           name: householdName,
           inviteCode: inviteCodeNew,
           users: [userId],
-          chores: choresForHousehold,
+          chores: [], // active assignments empty until user triggers assignment
+          pendingChoreTemplates: choresForHousehold,
           createdAt: new Date().toISOString(),
         });
       } catch (error) {
@@ -1099,9 +1105,9 @@ export async function registerUsers(app: Express) {
         try {
           const hhSnap = firestore
             ? await firestore
-                .collection("households")
-                .doc(String(dbUser.householdId))
-                .get()
+              .collection("households")
+              .doc(String(dbUser.householdId))
+              .get()
             : ({ exists: false } as any);
           if (hhSnap.exists) {
             const hhData = hhSnap.data() || {};
@@ -1280,36 +1286,18 @@ export async function registerUsers(app: Express) {
           householdUsers.push(userId);
         }
 
-        // If the household already has chores, the joiner should inherit the
-        // existing household chores instead of appending a new set. Only
-        // convert and add the user's chosen chores when the household has no
-        // chores yet (i.e., this is the household bootstrap case).
+        // If the household already has chores, DO NOT rebalance assignments when a new user joins.
         if (Array.isArray(householdChores) && householdChores.length > 0) {
-          // Rebalance assignments across household users so each chore is
-          // assigned to exactly one roommate. This avoids assigning the same
-          // chore to multiple users when someone joins.
+          // Persist only the updated users array. Do NOT modify existing chore assignments.
           try {
-            const usersForAssign = householdUsers.slice();
-            const count = usersForAssign.length || 1;
-
-            const rebalanced = householdChores.map((c: any, idx: number) => {
-              const chore = { ...(c || {}) };
-              const assignee = String(usersForAssign[idx % count]);
-              // assign as single id (keep backwards compatibility with string)
-              chore.assignedTo = assignee;
-              return chore;
-            });
-
-            // Persist both users array and rebalanced chores
-            await hhRef.update({ users: householdUsers, chores: rebalanced });
+            await hhRef.update({ users: householdUsers });
           } catch (error) {
             return res
               .status(500)
-              .json({ error: "Failed to update household" });
+              .json({ error: "Failed to update household users" });
           }
 
-          // Clear the user's personal chores array to avoid duplication; UI
-          // will read household chores (via `/api/chores`).
+          // Clear the user's personal chores array to avoid duplication; UI will read household chores.
           try {
             await userRef.set(
               { householdId, householdName: hhData.name || null, chores: [] },
@@ -1321,31 +1309,41 @@ export async function registerUsers(app: Express) {
               .json({ error: "Failed to update user household info" });
           }
         } else {
-          // Household has no chores yet: convert user's chores and add them.
-          const newChores = clientChoresToHouseholdChores(userChores, [userId]);
-          householdChores = [...householdChores, ...newChores];
-
-          // Deduplicate again after merging
-          if (householdChores.length > 1) {
-            const byId = new Map<string, any>();
-            for (const c of householdChores) {
-              if (!c) continue;
-              const id = String(c.id ?? c._id ?? Math.random());
-              if (!byId.has(id)) byId.set(id, c);
-            }
-            householdChores = Array.from(byId.values());
+          // Household has no chores yet: convert user's chores into pending templates
+          const newTemplates = clientChoresToHouseholdChores(userChores, [userId]);
+          // merge into pendingChoreTemplates (dedupe)
+          const existingTemplates = Array.isArray(hhData.pendingChoreTemplates) ? hhData.pendingChoreTemplates : [];
+          const merged = [...existingTemplates, ...newTemplates];
+          const byId = new Map<string, any>();
+          for (const c of merged) {
+            if (!c) continue;
+            const id = String(c.id ?? c._id ?? Math.random());
+            if (!byId.has(id)) byId.set(id, c);
           }
+          const finalTemplates = Array.from(byId.values());
 
-          // Update household document with chores and users
+          // Update household document with pending templates and users (no active chores yet)
           try {
             await hhRef.update({
               users: householdUsers,
-              chores: householdChores,
+              pendingChoreTemplates: finalTemplates,
             });
           } catch (error) {
             return res
               .status(500)
               .json({ error: "Failed to update household" });
+          }
+
+          // Clear the user's personal chores array to avoid duplication; UI will read household templates
+          try {
+            await userRef.set(
+              { householdId, householdName: hhData.name || null, chores: [] },
+              { merge: true }
+            );
+          } catch (error) {
+            return res
+              .status(500)
+              .json({ error: "Failed to update user household info" });
           }
         }
 
@@ -1463,6 +1461,10 @@ export async function registerUsers(app: Express) {
         name: hhData.name || null,
         inviteCode: hhData.inviteCode || null,
         chores,
+        // expose pending templates so frontend can surface "Assign chores" action
+        pendingChoreTemplates: Array.isArray(hhData.pendingChoreTemplates)
+          ? hhData.pendingChoreTemplates
+          : [],
         roommates,
       });
     } catch (error) {
@@ -1627,8 +1629,8 @@ export async function registerUsers(app: Express) {
       // Resolve users in household (hhData.users may be array of user ids or objects)
       const userIds: string[] = Array.isArray(hhData.users)
         ? hhData.users.map((u: any) =>
-            typeof u === "string" ? u : String(u.id)
-          )
+          typeof u === "string" ? u : String(u.id)
+        )
         : [];
 
       const users: { id: string; name: string | null }[] = [];
@@ -1712,4 +1714,32 @@ export async function registerUsers(app: Express) {
   /**
    * END OF ENDPOINT THAT MIGHT BE DELETED
    */
+
+  // New endpoint: trigger assignment for a household (runs algorithm + persists)
+  app.post("/api/household/:id/assign", async (req: Request, res: Response) => {
+    if (!(await initCollectionsIfNeeded(res))) return;
+    try {
+      const householdId = String(req.params.id || "").trim();
+      if (!householdId)
+        return res.status(400).json({ error: "Missing household id" });
+      if (!firestore)
+        return res.status(500).json({ error: "Firestore not initialized" });
+
+      // Fetch a household object usable by algorithm
+      const hh = await fetchHouseholdFromFirestore(householdId);
+      if (!hh) return res.status(404).json({ error: "Household not found" });
+
+      // Build flow graph and compute assignments
+      const graph = buildFlowGraph(hh);
+      const flowResult = minCostMaxFlow(graph);
+
+      // Persist assignments using firebase helper (this updates household chores and user chores atomically)
+      const assignmentResult = await assignUserstoChores(flowResult.assignments, householdId);
+
+      return res.json({ success: true, flowResult, assignmentResult });
+    } catch (err: any) {
+      console.error("Assignment failed:", err);
+      return res.status(500).json({ error: err?.message || "Assignment failed" });
+    }
+  });
 }
