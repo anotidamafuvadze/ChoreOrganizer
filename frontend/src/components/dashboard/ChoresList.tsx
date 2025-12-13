@@ -68,9 +68,9 @@ function calculateActualDueDate(chore: any): Date | null {
   const today = new Date();
   const daysSinceCreation = chore.dueDate
     ? Math.floor(
-      (today.getTime() - new Date(chore.dueDate).getTime()) /
-      (1000 * 60 * 60 * 24)
-    )
+        (today.getTime() - new Date(chore.dueDate).getTime()) /
+          (1000 * 60 * 60 * 24)
+      )
     : 0;
 
   let frequencyDays = 7; // default weekly
@@ -187,7 +187,7 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
           id = meData.user.id;
           onUserUpdate?.(meData.user);
         }
-      } catch { }
+      } catch {}
     }
 
     if (!id && !currentUser.email) return;
@@ -208,7 +208,7 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
           householdId = meData.householdId;
           onUserUpdate?.(meData.user || currentUser);
         }
-      } catch { }
+      } catch {}
     }
 
     let result: any = { chores: [], householdName: null, roommates: [] };
@@ -273,7 +273,7 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
     setRoommatesById(roommatesMap);
     setHasTemplates(
       Array.isArray(result.pendingChoreTemplates) &&
-      result.pendingChoreTemplates.length > 0
+        result.pendingChoreTemplates.length > 0
     );
     setDebugInfo({
       identifier: householdId || id || currentUser.email,
@@ -327,7 +327,9 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
         // mark that this household has had assignments run at least once
         try {
           localStorage.setItem(`household:${householdId}:assignedOnce`, "true");
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         setAssignedOnce(true);
         await loadChores();
       } else {
@@ -414,36 +416,17 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
               No Chores Yet! — When all roommates have joined, assign chores!
             </p>
           </div>
-          <div>
-            <Button
-              onClick={assignChores}
-              disabled={assigning}
-              className="bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-2xl"
-            >
-              {assigning ? "Assigning..." : "Assign Chores"}
-            </Button>
-          </div>
         </div>
       ) : (
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-purple-700 mb-1">Chores This Week</h3>
             <p className="text-purple-500 text-sm">
-              {chores.filter((c) => c.completed).length} of {chores.length} complete • Nice work! 🎉
+              {chores.filter((c) => c.completed).length} of {chores.length}{" "}
+              complete • Nice work! 🎉
             </p>
           </div>
-          <div>
-            {/* Persistent assign button appears after first successful assignment in household */}
-            {assignedOnce && (
-              <Button
-                onClick={assignChores}
-                disabled={assigning}
-                className="bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-2xl"
-              >
-                {assigning ? "Assigning..." : "Assign Chores"}
-              </Button>
-            )}
-          </div>
+          <div />
         </div>
       )}
 
@@ -474,14 +457,15 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
                     <motion.div
                       key={chore.id}
                       layout
-                      className={`relative p-5 rounded-2xl border-2 transition-all ${chore.completed
-                        ? "bg-green-100 border-green-300"
-                        : chore.isOverdue && !chore.completed
+                      className={`relative p-5 rounded-2xl border-2 transition-all ${
+                        chore.completed
+                          ? "bg-green-100 border-green-300"
+                          : chore.isOverdue && !chore.completed
                           ? "bg-gradient-to-r from-red-100 to-orange-100 border-red-400 shadow-md"
                           : chore.dueDay === "Today"
-                            ? "bg-yellow-100 border-yellow-300"
-                            : "bg-white/80 border-purple-100"
-                        }`}
+                          ? "bg-yellow-100 border-yellow-300"
+                          : "bg-white/80 border-purple-100"
+                      }`}
                     >
                       {confettiId === chore.id && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -514,10 +498,11 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
 
                         <div>
                           <p
-                            className={`${chore.completed
-                              ? "line-through text-purple-400"
-                              : "text-purple-700"
-                              }`}
+                            className={`${
+                              chore.completed
+                                ? "line-through text-purple-400"
+                                : "text-purple-700"
+                            }`}
                           >
                             {chore.name}
                           </p>
@@ -533,12 +518,13 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
 
                           <div className="text-xs mt-1 flex gap-2">
                             <span
-                              className={`px-2 py-1 rounded-full ${chore.isOverdue && !chore.completed
-                                ? "bg-red-200 text-red-800 font-semibold"
-                                : chore.dueDay === "Today"
+                              className={`px-2 py-1 rounded-full ${
+                                chore.isOverdue && !chore.completed
+                                  ? "bg-red-200 text-red-800 font-semibold"
+                                  : chore.dueDay === "Today"
                                   ? "bg-orange-200 text-orange-700"
                                   : "bg-purple-100 text-purple-600"
-                                }`}
+                              }`}
                             >
                               {chore.isOverdue && !chore.completed && "⚠️ "}
                               {chore.dueDay}
@@ -577,29 +563,31 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
                     <motion.div
                       key={chore.id}
                       layout
-                      className={`relative p-5 rounded-2xl border-2 transition-all ${chore.completed
-                        ? "bg-green-100 border-green-300"
-                        : chore.isOverdue && !chore.completed
+                      className={`relative p-5 rounded-2xl border-2 transition-all ${
+                        chore.completed
+                          ? "bg-green-100 border-green-300"
+                          : chore.isOverdue && !chore.completed
                           ? "bg-gradient-to-r from-red-100 to-orange-100 border-red-400 shadow-md"
                           : chore.dueDay === "Today"
-                            ? "bg-yellow-100 border-yellow-300"
-                            : "bg-white/80 border-purple-100"
-                        }`}
+                          ? "bg-yellow-100 border-yellow-300"
+                          : "bg-white/80 border-purple-100"
+                      }`}
                     >
                       <div className="flex items-center gap-4">
                         <Checkbox
                           checked={chore.completed}
-                          onCheckedChange={() => { }}
+                          onCheckedChange={() => {}}
                           disabled // cannot check roommates’ chores
                           className="w-6 h-6 border-purple-300"
                         />
 
                         <div>
                           <p
-                            className={`${chore.completed
-                              ? "line-through text-purple-400"
-                              : "text-purple-700"
-                              }`}
+                            className={`${
+                              chore.completed
+                                ? "line-through text-purple-400"
+                                : "text-purple-700"
+                            }`}
                           >
                             {chore.name}
                           </p>
@@ -615,12 +603,13 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
 
                           <div className="text-xs mt-1 flex gap-2">
                             <span
-                              className={`px-2 py-1 rounded-full ${chore.isOverdue && !chore.completed
-                                ? "bg-red-200 text-red-800 font-semibold"
-                                : chore.dueDay === "Today"
+                              className={`px-2 py-1 rounded-full ${
+                                chore.isOverdue && !chore.completed
+                                  ? "bg-red-200 text-red-800 font-semibold"
+                                  : chore.dueDay === "Today"
                                   ? "bg-orange-200 text-orange-700"
                                   : "bg-purple-100 text-purple-600"
-                                }`}
+                              }`}
                             >
                               {chore.isOverdue && !chore.completed && "⚠️ "}
                               {chore.dueDay}
