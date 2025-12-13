@@ -10,10 +10,10 @@ interface DashboardProps {
   onUserUpdate?: (u: User) => void;
 }
 
-export function Dashboard({ currentUser, onUserUpdate }: DashboardProps) {
+export function Dashboard({ currentUser, onUserUpdate, householdMembers }: DashboardProps & { householdMembers?: { name: string; mascot?: string | null; color?: string | null }[] }) {
   return (
     <div className="space-y-6">
-      <GreetingRow currentUser={currentUser} />
+      <GreetingRow currentUser={currentUser} householdMembers={householdMembers} />
 
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 space-y-6">

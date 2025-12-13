@@ -17,12 +17,12 @@ export function HouseholdConfirmationStep({
   onConfirm,
   onBack,
 }: HouseholdConfirmationStepProps) {
-  // Fetch real roommate objects from backend (name, mascot, color)
   const [roommates, setRoommates] = useState<
     { name: string; mascot?: string | null; color?: string | null }[] | null
   >(null);
   const [loading, setLoading] = useState(false);
 
+  // TODO: Try and get rid of this
   useEffect(() => {
     const hhId = householdData?.id;
     if (!hhId) {

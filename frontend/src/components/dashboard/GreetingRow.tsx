@@ -5,66 +5,28 @@ import { useEffect, useState } from "react";
 
 interface GreetingRowProps {
   currentUser: User;
+  householdMembers?: {
+    name: string;
+    mascot?: string | null;
+    color?: string | null;
+  }[];
 }
 
-export function GreetingRow({ currentUser }: GreetingRowProps) {
-  const [roommates, setRoommates] = useState<
-    { name: string; mascot?: string | null; color?: string | null }[]
+export function GreetingRow({
+  currentUser,
+  householdMembers,
+}: GreetingRowProps) {
+  const [displayMembers, setDisplayMembers] = useState<
+    {
+      name: string;
+      mascot?: string | null;
+      color?: string | null;
+    }[]
   >([]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadRoommates() {
-      try {
-        // Try to read householdId from currentUser first (may exist on server responses)
-        let householdId = (currentUser as any)?.householdId ?? null;
-
-        // Fallback: fetch session to get householdId if not present
-        if (!householdId) {
-          try {
-            const s = await fetch("http://localhost:3000/api/session", {
-              method: "GET",
-              mode: "cors",
-              credentials: "include",
-            });
-            if (s.ok) {
-              const sd = await s.json().catch(() => null);
-              householdId = sd?.householdId ?? null;
-            }
-          } catch {
-            householdId = null;
-          }
-        }
-
-        if (!householdId) {
-          if (!cancelled) setRoommates([]);
-          return;
-        }
-
-        const res = await fetch(
-          `http://localhost:3000/api/household/${encodeURIComponent(
-            String(householdId)
-          )}/roommates`,
-          { method: "GET", mode: "cors", credentials: "include" }
-        );
-        if (!res.ok) {
-          if (!cancelled) setRoommates([]);
-          return;
-        }
-        const data = await res.json().catch(() => null);
-        if (!cancelled)
-          setRoommates(Array.isArray(data?.roommates) ? data.roommates : []);
-      } catch {
-        if (!cancelled) setRoommates([]);
-      }
-    }
-
-    loadRoommates();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentUser]);
+    setDisplayMembers(householdMembers ?? []);
+  }, [householdMembers]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -106,10 +68,10 @@ export function GreetingRow({ currentUser }: GreetingRowProps) {
         <div className="flex items-center gap-4">
           <div>
             <p className="text-purple-500 text-sm text-right mb-2">
-              Your Roomies
+              Your Household
             </p>
             <div className="flex -space-x-3">
-              {roommates.map((roommate, idx) => (
+              {displayMembers.map((roommate, idx) => (
                 <div key={idx} className="relative group" title={roommate.name}>
                   <div className="bg-white/90 rounded-full p-2 border-2 border-white shadow-md hover:scale-110 transition-transform">
                     <MascotIllustration

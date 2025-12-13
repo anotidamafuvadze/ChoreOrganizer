@@ -12,10 +12,10 @@ import { LeaderboardScreen } from "./components/leaderboard/LeaderboardScreen";
 import { SettingsScreen } from "./components/settings/SettingsScreen";
 import ErrorToast from "./components/ui/error-toast";
 
-import { UserContext } from './contexts/UserContext';
-import { UserProvider } from './contexts/UserContext';
+import { UserContext } from "./contexts/UserContext";
+import { UserProvider } from "./contexts/UserContext";
 
-
+// TODO: Have this class call user/me and retrieve all information and then pass that information as parameters to others files (chore list needs chores for example)
 // Types
 export type Mascot = "frog" | "cat" | "bunny" | "bird" | "fox" | "bear";
 export const Mascot = {
@@ -66,14 +66,25 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
+  // New: store household roommates (loaded from backend)
+  const [householdRoommates, setHouseholdRoommates] = useState<
+    | {
+        name: string;
+        mascot?: string | null;
+        color?: string | null;
+        pronouns?: string | null;
+      }[]
+    | null
+  >(null);
+
   // Send session data to server
   const sendSessionToServer = async (
     user: User | null,
     householdName?: string | null,
     inviteCode?: string | null
-  ) => {
+  ): Promise<any[] | null> => {
     try {
-      await fetch("http://localhost:3000/api/session", {
+      const resp = await fetch("http://localhost:3000/api/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -84,8 +95,14 @@ export default function App() {
         mode: "cors",
         credentials: "include",
       });
+      // parse response and update roommates if present
+      const data = await resp.json().catch(() => null);
+      const rm = data?.roommates ?? null;
+      if (rm) setHouseholdRoommates(rm);
+      return rm;
     } catch (error) {
       // Ignore network errors for session saving
+      return null;
     }
   };
 
@@ -114,22 +131,29 @@ export default function App() {
         setCurrentUser(data.user);
         if (data.user.email) {
           localStorage.setItem("email", data.user.email.toLowerCase());
-          console.log("Set email in localStorage:", data.user.email.toLowerCase());
+          console.log(
+            "Set email in localStorage:",
+            data.user.email.toLowerCase()
+          );
           // Immediately check and log the value
-          console.log("localStorage.getItem('email'):", localStorage.getItem("email"));
+          console.log(
+            "localStorage.getItem('email'):",
+            localStorage.getItem("email")
+          );
           localStorage.setItem("testkey", "testvalue");
           console.log(localStorage.getItem("testkey"));
-
         }
 
         if (data.householdName) setHousehold(data.householdName);
         if (data.inviteCode) setHouseholdInviteCode(data.inviteCode);
+        // set roommates if provided by session endpoint
+        if (Array.isArray(data.roommates))
+          setHouseholdRoommates(data.roommates);
         setScreen("app");
         if (!cancelled) setLoading(false); // ensure loading state cleared on success
       } catch (err) {
         if (!cancelled) setLoading(false);
       }
-
     };
 
     restoreSession();
@@ -175,11 +199,12 @@ export default function App() {
         setCurrentUser(data.user);
         setHousehold(data.householdName);
         setHouseholdInviteCode(data?.inviteCode ?? null);
-        await sendSessionToServer(
+        const rm = await sendSessionToServer(
           data.user,
           data.householdName,
           data?.inviteCode ?? null
         );
+        if (rm) setHouseholdRoommates(rm);
         setScreen("app");
         setLoading(false);
         return;
@@ -226,11 +251,12 @@ export default function App() {
       setCurrentUser(data.user);
       setHousehold(data.householdName);
       setHouseholdInviteCode(data?.inviteCode ?? null);
-      await sendSessionToServer(
+      const rm = await sendSessionToServer(
         data.user,
         data.householdName,
         data?.inviteCode ?? null
       );
+      if (rm) setHouseholdRoommates(rm);
       setScreen("app");
       setLoading(false);
     } catch (error) {
@@ -283,19 +309,17 @@ export default function App() {
     }
 
     // Convert merged.preferences (map/object) into an array of { chore, preference }
-    const preferencesArray: { chore: string; preference: string }[] = Object.entries(
-      merged.preferences ?? {}
-    ).map(([chore, pref]) => ({
-      chore: String(chore),
-      preference: String(pref),
-    }));
+    const preferencesArray: { chore: string; preference: string }[] =
+      Object.entries(merged.preferences ?? {}).map(([chore, pref]) => ({
+        chore: String(chore),
+        preference: String(pref),
+      }));
 
     // preferencesArray is now available for logging or sending to backend
     // console.log(preferencesArray);
 
     setCurrentUser(merged);
     setHousehold(householdName);
-
 
     try {
       const payload: any = {
@@ -308,7 +332,7 @@ export default function App() {
           preferences: preferencesArray,
           chores: chores && chores.length ? chores : merged.chores,
           email: merged.email,
-          password: merged.password,
+          password: merged.password ?? null,
         },
       };
 
@@ -398,11 +422,13 @@ export default function App() {
       }
 
       await sendSessionToServer(merged, finalHouseholdName, finalInviteCode);
+      // sendSessionToServer will update roommates if backend returns them; no-op otherwise
+      // If it returned roommates earlier, state is already set
 
       setScreen("app");
       setLoading(false);
     } catch (error) {
-      console.log(error)
+      console.log(error);
       setError("Network error. Please check your connection.");
     }
   };
@@ -471,11 +497,15 @@ export default function App() {
               <Dashboard
                 currentUser={currentUser!}
                 onUserUpdate={(u) => setCurrentUser(u)}
+                householdMembers={householdRoommates ?? []}
+                /* Optionally pass householdRoommates to Dashboard if Dashboard is updated to accept it */
+                /* householdRoommates={householdRoommates ?? []} */
               />
             )}
             {activeView === "chores" && <ChoresScreen />}
             {activeView === "calendar" && (
-              <CalendarScreen householdId={currentUser?.householdId ?? ""} />)}
+              <CalendarScreen householdId={currentUser?.householdId ?? ""} />
+            )}
             {activeView === "leaderboard" && <LeaderboardScreen />}
             {activeView === "settings" && (
               <SettingsScreen
@@ -483,6 +513,7 @@ export default function App() {
                 household={household}
                 inviteCode={householdInviteCode}
                 onUpdateUser={(u) => setCurrentUser(u)}
+                householdMembers={householdRoommates ?? []}
               />
             )}
           </motion.div>

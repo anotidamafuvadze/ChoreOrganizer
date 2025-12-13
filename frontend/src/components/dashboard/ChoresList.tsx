@@ -172,14 +172,6 @@ export function ChoresList({ currentUser, onUserUpdate }: ChoresListProps) {
 
     let id = currentUser.id;
 
-    // fallback if missing ID → check local storage
-    if (!id) {
-      try {
-        const cached = JSON.parse(localStorage.getItem("session:user") || "");
-        if (cached?.id) id = cached.id;
-      } catch { }
-    }
-
     // fallback if still missing → lookup by email
     if (!id && currentUser.email) {
       try {

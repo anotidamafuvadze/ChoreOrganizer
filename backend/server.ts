@@ -1,6 +1,11 @@
-import express, { Express } from "express";
+import express, { Express, Request, Response, NextFunction } from "express";
 import cors from "cors";
-import { registerUsers } from "./src/users/registerUsers";
+import { registerOnboarding } from "./src/users/registerOnboarding";
+import { registerAuthSessions } from "./src/users/registerAuthSessions";
+import { registerAccounts } from "./src/users/registerAccounts";
+import { registerHouseholds } from "./src/users/registerHouseholds";
+import { registerChores } from "./src/users/registerChores";
+
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -8,17 +13,15 @@ export class ServerApp {
   public app: Express;
   private port: number;
 
-  constructor(
-    port: number = process.env.PORT ? Number(process.env.PORT) : 3000
-  ) {
+  constructor(port: number = process.env.PORT ? Number(process.env.PORT) : 3000) {
     this.app = express();
     this.port = port;
     this.configureMiddleware();
     this.registerHandlers();
   }
 
+  // Configure CORS to allow only the client origin when sending credentials
   private configureMiddleware() {
-    // Allow only the configured client origin (do not use wildcard '*' when sending credentials)
     const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
     this.app.use(
       cors({
@@ -29,9 +32,15 @@ export class ServerApp {
     this.app.use(express.json({ limit: "5mb" }));
   }
 
+  // Register all route handlers
   private registerHandlers() {
-    registerUsers(this.app);
+    registerOnboarding(this.app);
+    registerAuthSessions(this.app);
+    registerAccounts(this.app);
+    registerHouseholds(this.app);
+    registerChores(this.app);
   }
+
 
   public start() {
     this.app.listen(this.port, () => {
@@ -44,7 +53,7 @@ export class ServerApp {
   }
 }
 
-// If run directly, start server
+// Start server if this file is run directly
 if (require.main === module) {
   const server = new ServerApp();
   server.start();

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   User as UserIcon,
   Users,
@@ -19,45 +19,21 @@ interface SettingsScreenProps {
   household: string;
   inviteCode?: string | null;
   onUpdateUser?: (user: User) => void;
+  householdMembers?: {
+    id?: string;
+    name: string;
+    mascot?: string | null;
+    color?: string | null;
+    pronouns?: string | null;
+  }[];
 }
-
-// TODO: Replace with real roommates data fetching from backend
-const roommates = [
-  {
-    id: "1",
-    name: "You",
-    mascot: "cat" as const,
-    color: "#FFB6C1",
-    pronouns: "they/them",
-  },
-  {
-    id: "2",
-    name: "Alex",
-    mascot: "bunny" as const,
-    color: "#A7C7E7",
-    pronouns: "she/her",
-  },
-  {
-    id: "3",
-    name: "Jamie",
-    mascot: "fox" as const,
-    color: "#E6B8FF",
-    pronouns: "he/him",
-  },
-  {
-    id: "4",
-    name: "Sam",
-    mascot: "frog" as const,
-    color: "#FFDAB9",
-    pronouns: "they/them",
-  },
-];
 
 export function SettingsScreen({
   currentUser,
   household,
   inviteCode,
   onUpdateUser,
+  householdMembers,
 }: SettingsScreenProps) {
   // TODO: Replace with real notification settings fetching from backend and using notification API
   const [notifications, setNotifications] = useState({
@@ -68,94 +44,120 @@ export function SettingsScreen({
   });
   const [copied, setCopied] = useState(false);
   const [emailInput, setEmailInput] = useState(currentUser.email || "");
+  const [nameInput, setNameInput] = useState(currentUser.name || "");
+  const [pronounsInput, setPronounsInput] = useState(
+    currentUser.pronouns || ""
+  );
   const [newPassword, setNewPassword] = useState("");
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  // track which fields are currently updating to disable buttons
+  const [updatingFields, setUpdatingFields] = useState<Record<string, boolean>>(
+    {}
+  );
 
-  const handleNotificationToggle = (
-    key: keyof typeof notifications,
-    value: boolean
-  ) => {};
+  // sync controlled inputs when currentUser changes
+  useEffect(() => {
+    setEmailInput(currentUser.email || "");
+    setNameInput(currentUser.name || "");
+    setPronounsInput(currentUser.pronouns || "");
+  }, [currentUser.email, currentUser.name, currentUser.pronouns]);
 
-  // TODO: Implement change Mascot logic in backend
-  const changeMascot = (newMascot: string) => {
-    // Will need to show drop down of mascots to select from
-  };
+  // Generic updater: validates password/email and sends PUT to backend
+  const updateUserField = async (field: string, data: any) => {
+    if (updatingFields[field]) return;
 
-  // TODO: Implement change Name logic in backend
-  const changeName = (newName: string) => {
-    if (!newName || newName.trim() === "") return;
-    const updated: User = { ...currentUser, name: newName };
-    try {
-      if (typeof onUpdateUser === "function") {
-        onUpdateUser(updated);
+    // basic validation
+    if (field === "password") {
+      if (!data || String(data).length < 6) {
+        setPasswordError("Password must be at least 6 characters");
+        return;
       }
-    } catch (e) {
-      console.warn("Failed to propagate profile change", e);
+      setPasswordError(null);
+      setSavingPassword(true);
     }
-  };
+    if (field === "email") {
+      if (!data) {
+        setEmailError("Email cannot be empty");
+        return;
+      }
+      const emailStr = String(data).trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(emailStr)) {
+        setEmailError("Please enter a valid email address");
+        return;
+      }
+      setEmailError(null);
+      setSavingEmail(true);
+      data = emailStr;
+    }
 
-  const changeEmail = async (newEmail: string) => {
-    setEmailError(null);
-    if (!newEmail || newEmail === currentUser.email) return;
-    setSavingEmail(true);
+    // TODO: Include updateing mascot and color logic
+    setUpdatingFields((p) => ({ ...p, [field]: true }));
     try {
-      const resp = await fetch(
-        `http://localhost:3000/api/user/${currentUser.id}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: newEmail.toLowerCase() }),
-        }
-      );
+      const resp = await fetch(`http://localhost:3000/api/user/update`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: String(currentUser.id), [field]: data }),
+      });
+
+      const text = await resp.text();
+      let body: any = {};
+      try {
+        body = text ? JSON.parse(text) : {};
+      } catch {
+        body = {};
+      }
+
       if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        throw new Error(body?.error || "Failed to update email");
+        throw new Error(body?.error || "Failed to update user");
       }
-      const body = await resp.json();
-      if (onUpdateUser && body.user) onUpdateUser(body.user);
+
+      if (body?.user && typeof onUpdateUser === "function") {
+        onUpdateUser(body.user);
+      }
+
+      // update local controlled inputs after successful save
+      switch (field) {
+        case "name":
+          setNameInput(String(data || ""));
+          break;
+        case "pronouns":
+          setPronounsInput(String(data || ""));
+          break;
+        case "email":
+          setEmailInput(String(data || ""));
+          break;
+        case "password":
+          setNewPassword("");
+          break;
+        default:
+          break;
+      }
     } catch (e: any) {
-      setEmailError(e.message || "Failed to update email");
+      const msg = e?.message || "Failed to update";
+      if (field === "email") setEmailError(msg);
+      else if (field === "password") setPasswordError(msg);
+      else console.warn("Update failed:", msg);
     } finally {
-      setSavingEmail(false);
+      setUpdatingFields((p) => {
+        const copy = { ...p };
+        delete copy[field];
+        return copy;
+      });
+      if (field === "email") setSavingEmail(false);
+      if (field === "password") setSavingPassword(false);
     }
   };
 
-  const changePassword = async (pw: string) => {
-    setPasswordError(null);
-    if (!pw || pw.length < 6)
-      return setPasswordError("Password must be at least 6 characters");
-    setSavingPassword(true);
-    try {
-      const resp = await fetch(
-        `http://localhost:3000/api/user/${currentUser.id}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: pw }),
-        }
-      );
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        throw new Error(body?.error || "Failed to update password");
-      }
-      const body = await resp.json();
-      if (onUpdateUser && body.user) onUpdateUser(body.user);
-      setNewPassword("");
-    } catch (e: any) {
-      setPasswordError(e.message || "Failed to update password");
-    } finally {
-      setSavingPassword(false);
-    }
-  };
-
-  // TODO: Implement change Pronouns logic in backend
-  const changePronouns = (newPronouns: string) => {};
+  const handleNotificationToggle = (data: string, next: boolean) => {};
 
   // TODO: Implement change Mascot Color logic in backend
-  const changeMascotColors = (newColor: string) => {};
+  const changeMascot = (newColor: string) => {};
+
+  const changeMascotColors = (color: string) => {};
 
   // TODO: Implement support contact functionality
   const handleSupportClick = () => {};
@@ -223,22 +225,43 @@ export function SettingsScreen({
                   <label className="text-purple-600 text-sm mb-2 block">
                     Name
                   </label>
-                  <Input
-                    defaultValue={currentUser.name}
-                    onBlur={(e: any) => changeName(e.target?.value)}
-                    className="bg-white/80 border-purple-200 rounded-2xl"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      className="bg-white/80 border-purple-200 rounded-2xl"
+                    />
+                    <Button
+                      onClick={() => updateUserField("name", nameInput)}
+                      disabled={!!updatingFields["name"]}
+                      className="bg-white border border-purple-200 text-purple-700 rounded-2xl"
+                    >
+                      {updatingFields["name"] ? "Saving..." : "Update"}
+                    </Button>
+                  </div>
                 </div>
 
                 <div>
                   <label className="text-purple-600 text-sm mb-2 block">
                     Pronouns
                   </label>
-                  <Input
-                    defaultValue={currentUser.pronouns || "they/them"}
-                    onBlur={(e: any) => changePronouns(e.target?.value)}
-                    className="bg-white/80 border-purple-200 rounded-2xl"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="She/Her"
+                      value={pronounsInput}
+                      onChange={(e) => setPronounsInput(e.target.value)}
+                      className="bg-white/80 border-purple-200 rounded-2xl"
+                    />
+                    <Button
+                      onClick={() =>
+                        updateUserField("pronouns", pronounsInput || null)
+                      }
+                      disabled={!!updatingFields["pronouns"]}
+                      className="bg-white border border-purple-200 text-purple-700 rounded-2xl"
+                    >
+                      {updatingFields["pronouns"] ? "Saving..." : "Update"}
+                    </Button>
+                  </div>
                 </div>
 
                 <div>
@@ -249,15 +272,16 @@ export function SettingsScreen({
                     <Input
                       value={emailInput}
                       onChange={(e) => setEmailInput(e.target.value)}
-                      onBlur={(e) => changeEmail(e.target.value)}
                       className="bg-white/80 border-purple-200 rounded-2xl"
                     />
                     <Button
-                      onClick={() => changeEmail(emailInput)}
-                      disabled={savingEmail}
+                      onClick={() => updateUserField("email", emailInput)}
+                      disabled={!!updatingFields["email"] || savingEmail}
                       className="bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-2xl"
                     >
-                      Save
+                      {updatingFields["email"] || savingEmail
+                        ? "Saving..."
+                        : "Save"}
                     </Button>
                   </div>
                   {emailError ? (
@@ -278,11 +302,13 @@ export function SettingsScreen({
                       className="bg-white/80 border-purple-200 rounded-2xl"
                     />
                     <Button
-                      onClick={() => changePassword(newPassword)}
-                      disabled={savingPassword}
+                      onClick={() => updateUserField("password", newPassword)}
+                      disabled={!!updatingFields["password"] || savingPassword}
                       className="bg-white border border-purple-200 text-purple-700 rounded-2xl"
                     >
-                      Update
+                      {updatingFields["password"] || savingPassword
+                        ? "Saving..."
+                        : "Update"}
                     </Button>
                   </div>
                   {passwordError ? (
@@ -538,22 +564,22 @@ export function SettingsScreen({
               <div>
                 <p className="text-purple-600 text-sm mb-3">Roommates</p>
                 <div className="space-y-2">
-                  {roommates.map((roommate) => (
+                  {(householdMembers ?? []).map((member, idx) => (
                     <div
-                      key={roommate.id}
+                      key={member.id ?? idx}
                       className="bg-white/60 rounded-xl p-3 border border-purple-100 flex items-center gap-3"
                     >
                       <MascotIllustration
-                        mascot={roommate.mascot}
-                        color={roommate.color}
+                        mascot={(member as any).mascot}
+                        color={(member as any).color}
                         size={35}
                       />
                       <div>
                         <p className="text-purple-700 text-sm">
-                          {roommate.name}
+                          {member.name}
                         </p>
                         <p className="text-purple-500 text-xs">
-                          {roommate.pronouns}
+                          {member.pronouns}
                         </p>
                       </div>
                     </div>

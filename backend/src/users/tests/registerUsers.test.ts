@@ -1,1 +1,0 @@
-// TODO: Add relevant tests for user registration functionality

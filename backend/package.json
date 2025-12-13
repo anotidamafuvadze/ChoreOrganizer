@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "description": "Minimal backend for term-project using Node/Express",
-  "main": "index.ts",
+  "main": "server.ts",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "start": "ts-node -r dotenv/config index.ts",
-    "dev": "nodemon --watch . --exec ts-node -r dotenv/config index.ts",
+    "start": "ts-node -r dotenv/config server.ts",
+    "dev": "nodemon --watch . --exec ts-node -r dotenv/config server.ts",
     "test": "jest --colors"
   },
   "dependencies": {
