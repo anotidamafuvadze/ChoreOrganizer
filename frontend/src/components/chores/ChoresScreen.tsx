@@ -32,12 +32,11 @@ import { MascotIllustration } from "../mascots/MascotIllustration";
 import { Mascot } from "../../App";
 import { useUser } from "../../contexts/UserContext";
 import { QUOTES } from "../../data/motivationalQuotes";
-import CursorSparkles from "../ui/CursorSparkles";
+// CursorSparkles is rendered globally in App.tsx
 
 // Real chores/rotation data is loaded from backend; no mock fallbacks here.
 
-// TODO: Implement edit chore functionality
-const handleEditChore = (choreId: string) => {};
+// (Edit handler implemented inside the component below)
 
 // addChore now implemented as a styled dialog inside the component
 
@@ -72,6 +71,100 @@ export function ChoresScreen() {
   const [newFrequency, setNewFrequency] = useState<string>("Weekly");
   const [submitting, setSubmitting] = useState<boolean>(false);
   const user = useUser();
+
+  // Edit chore dialog state
+  const [editOpen, setEditOpen] = useState<boolean>(false);
+  const [editingChore, setEditingChore] = useState<any | null>(null);
+  const [editName, setEditName] = useState<string>("");
+  const [editPoints, setEditPoints] = useState<number>(5);
+  const [editFrequency, setEditFrequency] = useState<string>("Weekly");
+  const [editSubmitting, setEditSubmitting] = useState<boolean>(false);
+
+  function openEditChore(choreId: string) {
+    const active = Array.isArray(householdChores) ? householdChores : [];
+    const pending = Array.isArray(pendingTemplates) ? pendingTemplates : [];
+    // prefer editing active chores; editing pending templates is not supported here
+    const foundActive = active.find((c: any) => String(c.id) === String(choreId) || String(c._id) === String(choreId));
+    if (!foundActive) {
+      const foundPending = pending.find((c: any) => String(c.id) === String(choreId) || String(c._id) === String(choreId));
+      if (foundPending) {
+        alert('This is a template. Promote it to active chores before editing.');
+        return;
+      }
+      return;
+    }
+    const found = foundActive;
+    setEditingChore(found);
+    setEditName(String(found.name || found.choreName || ""));
+    setEditPoints(Number(found.points || 5));
+    setEditFrequency(String(found.frequency || "Weekly"));
+    setEditOpen(true);
+  }
+
+  async function submitEditChore() {
+    if (!editingChore) return;
+    // Resolve household id
+    let hhId = currentHouseholdId || getLocalHouseholdId();
+    if (!hhId) {
+      try {
+        const s = await fetch("/api/session", { credentials: "include" });
+        if (s.ok) {
+          const sd = await s.json();
+          hhId = sd?.user?.householdId ?? null;
+        }
+      } catch (e) {}
+    }
+    if (!hhId) {
+      alert("No household found in session");
+      return;
+    }
+
+    setEditSubmitting(true);
+    try {
+      const payload: any = {
+        name: editName,
+        points: Number(editPoints || 0),
+        frequency: editFrequency,
+      };
+
+      const res = await fetch(
+        `http://localhost:3000/api/household/${encodeURIComponent(hhId)}/chore/${encodeURIComponent(
+          String(editingChore.id || editingChore._id || editingChore.name)
+        )}`,
+        {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (res.ok) {
+        const jd = await res.json().catch(() => null);
+        const updated = jd?.chore ?? null;
+        if (updated) {
+          // update local householdChores (or pendingTemplates) with returned chore
+          setHouseholdChores((prev) => {
+            if (!Array.isArray(prev)) return prev;
+            return prev.map((c: any) =>
+              String(c.id) === String(updated.id) || String(c._id) === String(updated.id)
+                ? { ...c, ...updated }
+                : c
+            );
+          });
+          // also refresh from server for canonical state
+          await fetchHousehold(hhId);
+        }
+        setEditOpen(false);
+      } else {
+        console.warn("Failed to update chore", await res.text());
+      }
+    } catch (e) {
+      console.error("Error updating chore", e);
+    } finally {
+      setEditSubmitting(false);
+    }
+  }
 
   // Build the list of chores to show in the Preferences panel.
   const preferenceChores = (() => {
@@ -644,6 +737,50 @@ export function ChoresScreen() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+            {/* Edit Chore Dialog */}
+            <Dialog open={editOpen} onOpenChange={setEditOpen}>
+              <DialogContent className="bg-gradient-to-r from-white/60 to-pink-50 backdrop-blur-sm rounded-2xl p-6 border border-purple-100/50 shadow-md shadow-black/10">
+                <DialogHeader>
+                  <DialogTitle>Edit Chore</DialogTitle>
+                  <DialogDescription>Update chore details for your household.</DialogDescription>
+                </DialogHeader>
+
+                <div className="grid gap-3 py-2">
+                  <label className="text-sm text-purple-700">Name</label>
+                  <Input className="rounded-2xl" value={editName} onChange={(e) => setEditName(e.target.value)} />
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm text-purple-700">Points</label>
+                      <Input className="rounded-2xl" type="number" value={String(editPoints)} onChange={(e) => setEditPoints(Number(e.target.value || 0))} />
+                    </div>
+                    <div>
+                      <label className="text-sm text-purple-700">Frequency</label>
+                      <Select value={editFrequency} onValueChange={(v: string) => setEditFrequency(v)}>
+                        <SelectTrigger className="rounded-2xl">
+                          <SelectValue placeholder="Frequency" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white/95 backdrop-blur-sm rounded-2xl border border-purple-100/50 shadow-md">
+                          <SelectItem value="Daily">Daily</SelectItem>
+                          <SelectItem value="Weekly">Weekly</SelectItem>
+                          <SelectItem value="Biweekly">Biweekly</SelectItem>
+                          <SelectItem value="Monthly">Monthly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="outline" className="rounded-2xl">Cancel</Button>
+                  </DialogClose>
+                  <Button onClick={submitEditChore} disabled={editSubmitting} className="bg-gradient-to-r from-purple-400 to-pink-400 hover:from-purple-500 hover:to-pink-500 text-white rounded-2xl shadow-lg">
+                    {editSubmitting ? "Saving..." : "Save Changes"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           {assignedOnce && (
             <Button
               onClick={handleAssign}
@@ -771,7 +908,7 @@ export function ChoresScreen() {
                         <div className="flex items-center gap-2">
                           <button
                             className="p-2 hover:bg-purple-100 rounded-lg transition-colors"
-                            onClick={() => handleEditChore(chore.id)}
+                            onClick={(e) => { e.stopPropagation(); openEditChore(chore.id); }}
                           >
                             <svg
                               className="w-4 h-4 text-purple-400"

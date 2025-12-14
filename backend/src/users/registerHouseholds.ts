@@ -401,6 +401,69 @@ export function registerHouseholds(app: Express) {
     }
   );
 
+  // ---- Update a single chore's fields ----
+  app.put(
+    "/api/household/:id/chore/:choreId",
+    async (req: Request, res: Response) => {
+      if (!firestore)
+        return res.status(500).json({ error: "Firestore not initialized" });
+
+      try {
+        const householdId = String(req.params.id || "").trim();
+        const choreId = String(req.params.choreId || "").trim();
+        if (!householdId || !choreId)
+          return res.status(400).json({ error: "Missing ids" });
+
+        const hhRef = firestore.collection("households").doc(householdId);
+        const hhSnap = await hhRef.get();
+        if (!hhSnap.exists)
+          return res.status(404).json({ error: "Household not found" });
+
+        const hhData: any = hhSnap.data() || {};
+        const chores: any[] = Array.isArray(hhData.chores) ? hhData.chores : [];
+
+        const idx = chores.findIndex(
+          (c: any) =>
+            String(c.id) === String(choreId) ||
+            String(c._id) === String(choreId)
+        );
+        if (idx === -1)
+          return res.status(404).json({ error: "Chore not found" });
+
+        const payload = req.body || {};
+        const allowed = ["name", "frequency", "points", "icon", "assignedTo"];
+        const updated = { ...(chores[idx] || {}) };
+        for (const k of allowed) {
+          if (payload[k] !== undefined) updated[k] = payload[k];
+        }
+
+        const newChores = [...chores];
+        newChores[idx] = updated;
+
+        try {
+          await hhRef.update({ chores: newChores });
+        } catch (e) {
+          return res
+            .status(500)
+            .json({ error: "Failed to persist chore update" });
+        }
+
+        const roommates = await resolveRoommatesDetails(hhData);
+        return res.json({
+          success: true,
+          householdId,
+          chore: updated,
+          chores: newChores,
+          roommates,
+        });
+      } catch (err: any) {
+        return res
+          .status(500)
+          .json({ error: err?.message || "Failed to update chore" });
+      }
+    }
+  );
+
   /**
    * BEGINNNING OF ENDPOINT THAT MIGHT BE DELETED
    */
