@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Plus,
   Heart,
@@ -31,74 +31,17 @@ import {
 import { MascotIllustration } from "../mascots/MascotIllustration";
 import { Mascot } from "../../App";
 import { useUser } from "../../contexts/UserContext";
+import { QUOTES } from "../../data/motivationalQuotes";
+import CursorSparkles from "../ui/CursorSparkles";
 
-// TODO: Replace the chore list with real data fetching from backend on the ChoresScreen
-const choresList = [
-  {
-    id: "1",
-    name: "Take Out Trash",
-    icon: Trash2,
-    frequency: "Weekly",
-    assignedTo: "You",
-    color: "#FFB6C1",
-  },
-  {
-    id: "2",
-    name: "Wash Dishes",
-    icon: Droplets,
-    frequency: "Daily",
-    assignedTo: "Alex",
-    color: "#A7C7E7",
-  },
-  {
-    id: "3",
-    name: "Sweep Living Room",
-    icon: Sparkles,
-    frequency: "Weekly",
-    assignedTo: "Jamie",
-    color: "#E6B8FF",
-  },
-  {
-    id: "4",
-    name: "Clean Kitchen",
-    icon: Utensils,
-    frequency: "Biweekly",
-    assignedTo: "Sam",
-    color: "#FFDAB9",
-  },
-];
-
-const nextWeekRotation = [
-  {
-    choreName: "Take Out Trash",
-    points: 10,
-    assignedTo: { name: "Alex", mascot: "bunny" as Mascot, color: "#A7C7E7" },
-  },
-  {
-    choreName: "Wash Dishes",
-    points: 15,
-    assignedTo: { name: "You", mascot: "cat" as Mascot, color: "#FFB6C1" },
-  },
-];
-
-// TODO: Replace the preference stats with real data fetching from backend on the ChoresScreen
-const preferenceStats = {
-  "Take Out Trash": { love: 1, neutral: 2, avoid: 1 },
-  "Wash Dishes": { love: 0, neutral: 3, avoid: 1 },
-  "Sweep Living Room": { love: 2, neutral: 1, avoid: 1 },
-  "Clean Kitchen": { love: 1, neutral: 2, avoid: 1 },
-};
+// Real chores/rotation data is loaded from backend; no mock fallbacks here.
 
 // TODO: Implement edit chore functionality
 const handleEditChore = (choreId: string) => {};
 
 // addChore now implemented as a styled dialog inside the component
 
-// TODO: Implement preference update functionality
-const updatePreference = (
-  choreId: string,
-  preference: "love" | "neutral" | "avoid"
-) => {};
+// preference update will be implemented inside the component
 
 export function ChoresScreen() {
   const [selectedChore, setSelectedChore] = useState<string | null>(null);
@@ -113,6 +56,14 @@ export function ChoresScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<boolean>(false);
   const [assignedOnce, setAssignedOnce] = useState<boolean>(false);
+  const [userPreferences, setUserPreferences] = useState<
+    Record<string, string>
+  >({});
+
+  const [quote, setQuote] = useState<string | null>(null);
+  const [quoteVisible, setQuoteVisible] = useState<boolean>(true);
+  const [typedQuote, setTypedQuote] = useState<string>("");
+  const _typingTimeouts = useRef<number[]>([]);
 
   // add-chore dialog state
   const [addOpen, setAddOpen] = useState<boolean>(false);
@@ -134,7 +85,7 @@ export function ChoresScreen() {
       if (!name) continue;
       if (!map.has(name)) map.set(name, c);
     }
-    if (map.size === 0) return choresList;
+    if (map.size === 0) return [];
     return Array.from(map.values());
   })();
 
@@ -238,6 +189,18 @@ export function ChoresScreen() {
             const sd = await s.json();
             hhId = sd?.user?.householdId ?? null;
             setCurrentUserId(sd?.user?.id ?? sd?.user?.uid ?? null);
+            try {
+              const prefs = sd?.user?.preferences ?? sd?.user?.prefs ?? null;
+              if (Array.isArray(prefs)) {
+                const map: Record<string, string> = {};
+                for (const p of prefs) {
+                  const key = p?.choreId ?? p?.choreName ?? p?.chore ?? null;
+                  const val = p?.preference ?? p?.pref ?? null;
+                  if (key && val) map[String(key)] = String(val);
+                }
+                setUserPreferences(map);
+              }
+            } catch (e) {}
           }
         } catch (e) {
           // ignore
@@ -252,6 +215,152 @@ export function ChoresScreen() {
     window.addEventListener("household:updated", handler);
     return () => window.removeEventListener("household:updated", handler);
   }, []);
+
+  useEffect(() => {
+    if (!Array.isArray(QUOTES) || QUOTES.length === 0) {
+      setQuote(null);
+      return;
+    }
+
+    // Pick an initial random quote and rotate every 20s with an animated fade/slide
+    setQuote(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+    setQuoteVisible(true);
+    const id = setInterval(() => {
+      // Animate out, then swap quote, then animate in
+      setQuoteVisible(false);
+      setTimeout(() => {
+        setQuote(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+        setQuoteVisible(true);
+      }, 350);
+    }, 20000);
+
+    return () => clearInterval(id);
+  }, []);
+
+  // Typewriter effect: watch `quote` and `quoteVisible` and animate typed characters
+  useEffect(() => {
+    // clear any pending timeouts
+    try {
+      _typingTimeouts.current.forEach((t) => clearTimeout(t));
+      _typingTimeouts.current = [];
+    } catch (e) {}
+
+    if (!quote) {
+      setTypedQuote("");
+      return;
+    }
+
+    // Respect reduced motion preference
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      setTypedQuote(quote);
+      return;
+    }
+
+    // Wait until visible to begin typing to avoid hidden typing
+    if (!quoteVisible) {
+      setTypedQuote("");
+      return;
+    }
+
+    setTypedQuote("");
+    const chars = Array.from(quote);
+    const baseDelay = 28; // ms per character
+    chars.forEach((ch, idx) => {
+      const jitter = Math.floor(Math.random() * 12) - 6;
+      const t = window.setTimeout(() => {
+        setTypedQuote((prev) => prev + ch);
+      }, idx * baseDelay + jitter + 20);
+      _typingTimeouts.current.push(t);
+    });
+
+    // cleanup on unmount or quote change
+    return () => {
+      try {
+        _typingTimeouts.current.forEach((t) => clearTimeout(t));
+        _typingTimeouts.current = [];
+      } catch (e) {}
+    };
+  }, [quote, quoteVisible]);
+
+  // persist a user's preference for a chore
+  async function updatePreference(
+    choreId: string,
+    preference: "love" | "neutral" | "avoid"
+  ) {
+    try {
+      // optimistic UI
+      const key = String(choreId);
+      setUserPreferences((s) => ({ ...(s || {}), [key]: preference }));
+
+      // ensure we have a user id
+      let uid = currentUserId;
+      if (!uid) {
+        try {
+          const ss = await fetch("http://localhost:3000/api/session", {
+            credentials: "include",
+          });
+          if (ss.ok) {
+            const sd = await ss.json();
+            uid = sd?.user?.id ?? sd?.user?.uid ?? null;
+            setCurrentUserId(uid);
+          }
+        } catch (e) {}
+      }
+      if (!uid) return;
+
+      const findName = (id: any) => {
+        const active = Array.isArray(householdChores) ? householdChores : [];
+        const pending = Array.isArray(pendingTemplates) ? pendingTemplates : [];
+        const all = [...pending, ...active];
+        const found = all.find(
+          (c: any) =>
+            String(c.id) === String(id) || String(c.name) === String(id)
+        );
+        return found ? found.name || found.choreName || String(id) : String(id);
+      };
+
+      const payload = {
+        id: uid,
+        preferences: [
+          {
+            choreId: String(choreId),
+            choreName: findName(choreId),
+            preference,
+          },
+        ],
+      };
+
+      console.debug("pref update payload", payload);
+
+      const res = await fetch(`http://localhost:3000/api/user/update`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const jd = await res.json();
+        const returned = jd?.user ?? jd;
+        const prefs = returned?.preferences ?? null;
+        if (prefs && Array.isArray(prefs)) {
+          const map: Record<string, string> = {};
+          for (const p of prefs) {
+            if (p && p.choreId) map[String(p.choreId)] = p.preference;
+          }
+          setUserPreferences(map);
+        }
+      } else {
+        console.warn("Preference update failed", await res.text());
+      }
+    } catch (e) {
+      console.error("Error updating preference", e);
+    }
+  }
 
   async function handleAssign() {
     // Resolve household id (prefer currently loaded id)
@@ -592,13 +701,13 @@ export function ChoresScreen() {
                 const unassignedDisplay = [...pending, ...activeUnassigned];
                 const assignedDisplay = activeAssigned;
 
-                // fallback sample list when nothing loaded
+                // empty state when nothing loaded
                 if (!unassignedDisplay.length && !assignedDisplay.length) {
-                  return choresList.map((chore: any) => (
-                    <div key={chore.id}>
-                      {/* fallback item rendered elsewhere */}
+                  return (
+                    <div className="py-8 text-center text-purple-500">
+                      No chores yet — add a chore to get started.
                     </div>
-                  ));
+                  );
                 }
 
                 function renderChoreItem(chore: any) {
@@ -723,82 +832,144 @@ export function ChoresScreen() {
           <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-6 border border-purple-100/50 shadow-lg">
             <h3 className="text-purple-700 mb-4">Your Preferences</h3>
             <div className="space-y-4">
-              {preferenceChores.map((chore: any, idx: number) => (
-                <div
-                  key={chore.id ?? chore.name ?? `pref-${idx}`}
-                  className="bg-white/60 rounded-xl p-3 border border-purple-100"
-                >
-                  <p className="text-purple-700 text-sm mb-2">
-                    {chore.name || chore.choreName || "Unnamed Chore"}
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      className="flex-1 p-2 bg-pink-50 hover:bg-pink-100 rounded-lg transition-colors"
-                      onClick={() =>
-                        updatePreference(chore.id ?? chore.name, "love")
-                      }
-                    >
-                      <Heart className="w-4 h-4 text-pink-400 mx-auto" />
-                    </button>
-                    <button
-                      className="flex-1 p-2 bg-yellow-50 hover:bg-yellow-100 rounded-lg transition-colors"
-                      onClick={() =>
-                        updatePreference(chore.id ?? chore.name, "neutral")
-                      }
-                    >
-                      <Meh className="w-4 h-4 text-yellow-400 mx-auto" />
-                    </button>
-                    <button
-                      className="flex-1 p-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
-                      onClick={() =>
-                        updatePreference(chore.id ?? chore.name, "avoid")
-                      }
-                    >
-                      <X className="w-4 h-4 text-gray-400 mx-auto" />
-                    </button>
+              {preferenceChores.map((chore: any, idx: number) => {
+                const prefKey = String(chore.id ?? chore.name ?? `pref-${idx}`);
+                const currentPref = (userPreferences || {})[prefKey];
+                return (
+                  <div
+                    key={chore.id ?? chore.name ?? `pref-${idx}`}
+                    className="bg-white/60 rounded-xl p-3 border border-purple-100"
+                  >
+                    <p className="text-purple-700 text-sm mb-2">
+                      {chore.name || chore.choreName || "Unnamed Chore"}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        className={`flex-1 p-2 rounded-lg transition-colors ${
+                          currentPref === "love"
+                            ? "bg-pink-100 ring-2 ring-offset-1 ring-pink-300"
+                            : "bg-pink-50 hover:bg-pink-100"
+                        }`}
+                        onClick={() =>
+                          updatePreference(chore.id ?? chore.name, "love")
+                        }
+                      >
+                        <Heart className="w-4 h-4 text-pink-400 mx-auto" />
+                      </button>
+                      <button
+                        className={`flex-1 p-2 rounded-lg transition-colors ${
+                          currentPref === "neutral"
+                            ? "bg-yellow-100 ring-2 ring-offset-1 ring-yellow-300"
+                            : "bg-yellow-50 hover:bg-yellow-100"
+                        }`}
+                        onClick={() =>
+                          updatePreference(chore.id ?? chore.name, "neutral")
+                        }
+                      >
+                        <Meh className="w-4 h-4 text-yellow-400 mx-auto" />
+                      </button>
+                      <button
+                        className={`flex-1 p-2 rounded-lg transition-colors ${
+                          currentPref === "avoid"
+                            ? "bg-gray-200 ring-2 ring-offset-1 ring-gray-400"
+                            : "bg-gray-50 hover:bg-gray-100"
+                        }`}
+                        onClick={() =>
+                          updatePreference(chore.id ?? chore.name, "avoid")
+                        }
+                      >
+                        <X className="w-4 h-4 text-gray-400 mx-auto" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
           {/* Rotation Preview */}
           <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-6 border border-purple-100/50 shadow-lg">
-            <h3 className="text-purple-700 mb-4">Next Week's Rotation</h3>
-            <div className="space-y-3">
-              {nextWeekRotation.map((rot, idx) => (
-                <div
-                  key={`${rot.choreName}-${idx}`}
-                  className={`rounded-xl p-4 border border-purple-100 ${
-                    idx === 0
-                      ? "bg-gradient-to-r from-yellow-50 to-pink-50"
-                      : "bg-gradient-to-r from-blue-50 to-purple-50"
+              <div className="text-center py-4">
+                <p
+                  className={`mb-2 text-lg font-medium text-purple-700 transition-opacity transform duration-300 ${
+                    quoteVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-purple-700 text-sm">
-                      {rot.choreName}
-                    </span>
-                    <span className="text-purple-600 text-xs">
-                      {rot.points} pts
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <MascotIllustration
-                      mascot={rot.assignedTo.mascot}
-                      color={rot.assignedTo.color}
-                      size={25}
-                    />
-                    <span className="text-purple-600 text-sm">
-                      {rot.assignedTo.name}
-                    </span>
-                  </div>
+                  {typedQuote || " "}
+                </p>
+                <div className="mt-3">
+                  <button
+                    className="text-xs text-purple-600 underline"
+                    onClick={() => {
+                      if (!Array.isArray(QUOTES) || QUOTES.length === 0) return;
+                      // animate out, swap, animate in
+                      setQuoteVisible(false);
+                      setTimeout(() => {
+                        setQuote(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+                        setQuoteVisible(true);
+                      }, 300);
+                    }}
+                  >
+                    Show another quote
+                  </button>
                 </div>
-              ))}
-            </div>
-            {/* <Button className="w-full mt-4 bg-gradient-to-r from-purple-400 to-pink-400 text-white rounded-xl text-sm">
-              Preview All Assignments
-            </Button> */}
+              </div>
+
+            {/* <h3 className="text-purple-700 mb-4">Next Week's Rotation</h3>
+            <div className="space-y-3">
+              {Array.isArray(householdChores) && householdChores.length > 0 ? (
+                householdChores.slice(0, 3).map((c: any, idx: number) => {
+                  const assignedRaw = c.assignedTo;
+                  let assignedName = "Unassigned";
+                  if (assignedRaw) {
+                    if (typeof assignedRaw === "string") {
+                      const rm = roommates.find(
+                        (r) => String(r.id) === String(assignedRaw)
+                      );
+                      if (String(assignedRaw) === String(currentUserId))
+                        assignedName = "You";
+                      else if (rm)
+                        assignedName = rm.name ?? String(assignedRaw);
+                      else assignedName = String(assignedRaw);
+                    } else if (
+                      typeof assignedRaw === "object" &&
+                      assignedRaw.name
+                    ) {
+                      assignedName = assignedRaw.name;
+                    }
+                  }
+
+                  return (
+                    <div
+                      key={`${c.name ?? c.choreName}-${idx}`}
+                      className={`rounded-xl p-4 border border-purple-100 ${
+                        idx === 0
+                          ? "bg-gradient-to-r from-yellow-50 to-pink-50"
+                          : "bg-gradient-to-r from-blue-50 to-purple-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-purple-700 text-sm">
+                          {c.name ?? c.choreName}
+                        </span>
+                        <span className="text-purple-600 text-xs">
+                          {c.points ?? 0} pts
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-purple-600 text-sm">
+                          {assignedName}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-sm text-purple-500">
+                  No rotation preview yet
+                </div>
+              )}
+            </div> */}
           </div>
         </div>
       </div>

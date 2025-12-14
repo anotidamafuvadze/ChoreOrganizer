@@ -11,6 +11,7 @@ import { CalendarScreen } from "./components/calendar/CalendarScreen";
 import { LeaderboardScreen } from "./components/leaderboard/LeaderboardScreen";
 import { SettingsScreen } from "./components/settings/SettingsScreen";
 import ErrorToast from "./components/ui/error-toast";
+import CursorSparkles from "./components/ui/CursorSparkles";
 
 import { UserContext } from "./contexts/UserContext";
 import { UserProvider } from "./contexts/UserContext";
@@ -445,17 +446,21 @@ export default function App() {
   // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#FFF9E6] via-[#FFE8F5] to-[#E6F7FF]">
-        <div aria-live="polite" className="text-gray-500">
-          Loading...
+      <>
+        <CursorSparkles />
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#FFF9E6] via-[#FFE8F5] to-[#E6F7FF]">
+          <div aria-live="polite" className="text-gray-500">
+            Loading...
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (screen === "login") {
     return (
       <>
+        <CursorSparkles />
         <ErrorToast message={error} />
         <LoginScreen
           onLoginComplete={handleLoginComplete}
@@ -469,6 +474,7 @@ export default function App() {
   if (screen === "onboarding") {
     return (
       <>
+        <CursorSparkles />
         <ErrorToast message={error} />
         <OnboardingFlow onComplete={handleOnboardingComplete} />
       </>
@@ -477,6 +483,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FFF9E6] via-[#FFE8F5] to-[#E6F7FF] pb-24">
+      <CursorSparkles />
       <ErrorToast message={error} />
       <Header
         household={household}
